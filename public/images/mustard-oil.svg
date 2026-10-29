@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="oilBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fffcf2" />
+      <stop offset="100%" stop-color="#fef5d6" />
+    </linearGradient>
+    <linearGradient id="oilLiquid" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d97706" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+    <linearGradient id="glassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.8" />
+      <stop offset="30%" stop-color="#ffffff" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.5" />
+    </linearGradient>
+    <filter id="oilShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#b45309" flood-opacity="0.2" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="600" height="450" fill="url(#oilBg)" rx="24" />
+  
+  <!-- Subtle Floral / Mustard field background shapes -->
+  <circle cx="500" cy="110" r="130" fill="#f59e0b" opacity="0.06" />
+  <circle cx="90" cy="360" r="150" fill="#f59e0b" opacity="0.05" />
+
+  <!-- The Bottle -->
+  <g filter="url(#oilShadow)" transform="translate(230, 60)">
+    <!-- Shadow under bottle -->
+    <ellipse cx="70" cy="330" rx="65" ry="14" fill="#78350f" opacity="0.25" />
+
+    <!-- Bottle Body & Oil -->
+    <rect x="25" y="110" width="90" height="200" rx="16" fill="url(#oilLiquid)" />
+    <!-- Bottle Shoulder & Neck -->
+    <path d="M 25 120 L 50 70 L 50 35 L 90 35 L 90 70 L 115 120 Z" fill="url(#oilLiquid)" />
+    
+    <!-- Bottle Cap -->
+    <rect x="46" y="15" width="48" height="22" rx="4" fill="#f37820" />
+    <line x1="46" y1="26" x2="94" y2="26" stroke="#c2570d" stroke-width="2" />
+    
+    <!-- Glass Highlights -->
+    <rect x="32" y="115" width="12" height="185" rx="6" fill="url(#glassGrad)" />
+    <path d="M 54 70 L 54 40 L 60 40 L 60 70 Z" fill="#ffffff" opacity="0.4" />
+
+    <!-- Label on the bottle -->
+    <rect x="33" y="145" width="74" height="110" rx="8" fill="#ffffff" />
+    <rect x="36" y="148" width="68" height="104" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="1" />
+    
+    <!-- Label content -->
+    <circle cx="70" cy="175" r="15" fill="#f37820" />
+    <path d="M 70 164 Q 63 175 70 185 Q 77 175 70 164 Z" fill="#fef3c7" />
+    <text x="70" y="206" font-family="system-ui, sans-serif" font-size="9" font-weight="800" fill="#78350f" text-anchor="middle">কাঠের ঘানি</text>
+    <text x="70" y="218" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#92400e" text-anchor="middle">সরিষার তেল</text>
+    <text x="70" y="235" font-family="system-ui, sans-serif" font-size="7" font-weight="600" fill="#b45309" text-anchor="middle">১০০% খাঁটি</text>
+  </g>
+
+  <!-- Mustard Seeds and Drops -->
+  <g fill="#f59e0b">
+    <circle cx="160" cy="330" r="6" />
+    <circle cx="175" cy="342" r="5" fill="#d97706" />
+    <circle cx="150" cy="350" r="4" fill="#b45309" />
+    <circle cx="190" cy="348" r="5.5" />
+    <circle cx="178" cy="360" r="4.5" fill="#d97706" />
+    <circle cx="390" cy="335" r="5" />
+    <circle cx="410" cy="345" r="6" fill="#d97706" />
+    <circle cx="400" cy="360" r="4" fill="#b45309" />
+  </g>
+
+  <!-- Quality Badge Bottom Left -->
+  <g transform="translate(40, 360)">
+    <rect width="180" height="48" rx="24" fill="#ffffff" filter="url(#oilShadow)" />
+    <circle cx="28" cy="24" r="14" fill="#f59e0b" />
+    <path d="M22 24 L27 28 L35 19" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <text x="52" y="24" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#451a03">প্রথম চাপের ঝাঁঝ</text>
+    <text x="52" y="38" font-family="system-ui, sans-serif" font-size="10" fill="#92400e">কোল্ড-প্রেসড ন্যাচারাল</text>
+  </g>
+
+  <!-- Badge Top Right -->
+  <g transform="translate(430, 50)">
+    <circle cx="50" cy="50" r="42" fill="#f37820" />
+    <circle cx="50" cy="50" r="37" fill="#ffffff" />
+    <circle cx="50" cy="50" r="34" fill="#fef3c7" />
+    <text x="50" y="46" font-family="system-ui, sans-serif" font-size="10" font-weight="800" fill="#b45309" text-anchor="middle">BEST</text>
+    <text x="50" y="60" font-family="system-ui, sans-serif" font-size="10" font-weight="900" fill="#78350f" text-anchor="middle">SELLER</text>
+  </g>
+</svg>
+
