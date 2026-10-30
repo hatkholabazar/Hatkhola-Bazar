@@ -435,18 +435,18 @@ export default function AdminStockPage() {
 
         {/* Batches Table */}
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+          <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold sticky top-0 z-10 shadow-2xs">
                 <tr>
-                  <th className="py-3 px-4">Batch Number</th>
-                  <th className="py-3 px-4">Product</th>
-                  <th className="py-3 px-4">Supplier & Reference</th>
-                  <th className="py-3 px-4">Received / Ordered</th>
-                  <th className="py-3 px-4">Unit Cost (Landed)</th>
-                  <th className="py-3 px-4">Stock Left</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Action</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Batch Number</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Product</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Supplier & Reference</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Received / Ordered</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Unit Cost (Landed)</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Stock Left</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Status</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -840,7 +840,7 @@ export default function AdminStockPage() {
                           }`}
                         >
                           Shortage: {formatGramsToKg(shortageG)} ({shortagePercent}%)
-                          {isShortageCritical && " ⚠️ >2%"}
+                          {isShortageCritical && " (Critical >2%)"}
                         </span>
                       )}
                     </div>

@@ -16,19 +16,32 @@ import {
   FaBan,
   FaCalendarAlt,
   FaShieldAlt,
+  FaRedoAlt,
 } from "react-icons/fa";
-import { siteConfig, Product } from "@/data/siteConfig";
+import { siteConfig } from "@/data/siteConfig";
 import { useCart, extractPriceFromOption } from "@/context/CartContext";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
-interface PublicProductApiItem {
+export interface DbProduct {
   id: string;
   code: string;
   slug: string;
   name: string;
   availabilityMode: "in_stock" | "pre_order" | "out_of_stock";
+  sellingOptions: {
+    label: string;
+    qtyG: number;
+    sellingPrice: number;
+  }[];
+  isSeasonal?: boolean;
+  description?: string;
+  tagline?: string;
+  badge?: string;
+  origin?: string;
+  benefits?: string[];
+  image?: string;
   preOrder?: {
     expectedDate?: string;
     expectedNote?: string;
@@ -37,50 +50,48 @@ interface PublicProductApiItem {
     depositPercent?: number;
     cancellationPolicyText?: string;
   };
-  sellingOptions: {
-    label: string;
-    qtyG: number;
-    sellingPrice: number;
-  }[];
 }
 
-function ProductCard({
-  product,
-  liveApiData,
-}: {
-  product: Product;
-  liveApiData?: PublicProductApiItem;
-}) {
+function ProductCard({ product }: { product: DbProduct }) {
   const router = useRouter();
-  const [selectedOption, setSelectedOption] = useState(product.defaultOption);
   const { business } = siteConfig;
   const { addItem, openDrawer } = useCart();
   const [justAdded, setJustAdded] = useState(false);
 
+  // Format options: "label - ৳price"
+  const formattedOptions = (product.sellingOptions || []).map(
+    (o) => `${o.label} - ৳${o.sellingPrice}`
+  );
+  const defaultOption = formattedOptions[0] || "Standard - ৳0";
+  const [selectedOption, setSelectedOption] = useState(defaultOption);
+
+  // Sync selectedOption if options change
+  useEffect(() => {
+    if (formattedOptions.length > 0 && !formattedOptions.includes(selectedOption)) {
+      setSelectedOption(formattedOptions[0]);
+    }
+  }, [formattedOptions, selectedOption]);
+
   const unitPrice = extractPriceFromOption(selectedOption);
 
-  // Determine effective availability mode:
-  // Live API takes precedence if available; otherwise defaults to siteConfig logic
   let effectiveMode: "in_stock" | "pre_order" | "out_of_stock" =
-    liveApiData?.availabilityMode || "in_stock";
+    product.availabilityMode || "in_stock";
 
-  // Pre-order Expected Note & Policy
-  const expectedNote =
-    liveApiData?.preOrder?.expectedNote ||
-    (product.isWinterSpecial ? "Winter Harvest (Mid-December)" : "Expected Soon");
-
-  const cancellationPolicy =
-    liveApiData?.preOrder?.cancellationPolicyText ||
-    "Full refund if cancelled before shipment.";
-
-  // Seasonal Gur Override:
-  // If winterActive is false but gur is in pre_order mode, pre_order wins over "Back in winter"
+  const isWinterSpecial = Boolean(product.isSeasonal || product.slug === "khejur-gur");
   const isWinterSuppressed =
-    product.isWinterSpecial && !siteConfig.winterActive && effectiveMode !== "pre_order";
+    isWinterSpecial && !siteConfig.winterActive && effectiveMode !== "pre_order";
 
   if (isWinterSuppressed && effectiveMode !== "pre_order") {
     effectiveMode = "out_of_stock";
   }
+
+  const expectedNote =
+    product.preOrder?.expectedNote ||
+    (isWinterSpecial ? "Winter Harvest (Mid-December)" : "Expected Soon");
+
+  const cancellationPolicy =
+    product.preOrder?.cancellationPolicyText ||
+    "Full refund if cancelled before shipment.";
 
   // Construct WhatsApp Messages based on mode
   let whatsappMessage = "";
@@ -94,7 +105,7 @@ I want to order:
 - Product: ${product.name}
 - Package: ${selectedOption}
 - Quantity: 1
-- Price: ৳${unitPrice > 0 ? unitPrice : product.price}
+- Price: ৳${unitPrice}
 
 Please let me know confirmation and delivery details. Thank you!`;
   }
@@ -103,27 +114,55 @@ Please let me know confirmation and delivery details. Thank you!`;
     whatsappMessage
   )}`;
 
+  const productImage =
+    product.image ||
+    (product.slug === "danadar-ghee"
+      ? "/ghee-pic.webp"
+      : product.slug === "khejur-gur"
+      ? "/gur-pic.webp"
+      : "/ghee-pic.webp");
+
+  const productBadge =
+    product.badge ||
+    (isWinterSpecial ? "Winter Special" : "Best Seller");
+
   const handleAddToCart = () => {
-    addItem(product, selectedOption, 1);
+    addItem(
+      {
+        id: product.slug || product.id,
+        name: product.name,
+        image: productImage,
+      } as any,
+      selectedOption,
+      1
+    );
     setJustAdded(true);
     openDrawer();
     setTimeout(() => setJustAdded(false), 2000);
   };
 
   const handleOrderNow = () => {
-    addItem(product, selectedOption, 1);
+    addItem(
+      {
+        id: product.slug || product.id,
+        name: product.name,
+        image: productImage,
+      } as any,
+      selectedOption,
+      1
+    );
     router.push("/checkout");
   };
 
   return (
     <div className="flex flex-col bg-white rounded-3xl border border-orange-200/90 shadow-md shadow-orange-500/5 overflow-hidden hover:shadow-xl transition-all duration-300 group">
-      {/* Product Image Container (Clickable to Details) */}
+      {/* Product Image Container */}
       <Link
-        href={`/products/${product.id}`}
+        href={`/products/${product.slug || product.id}`}
         className="relative w-full aspect-4/3 bg-orange-50/50 overflow-hidden block"
       >
         <Image
-          src={product.image}
+          src={productImage}
           alt={product.name}
           fill
           sizes="(max-width: 768px) 100vw, 50vw"
@@ -137,7 +176,7 @@ Please let me know confirmation and delivery details. Thank you!`;
               <FaClock className="w-3.5 h-3.5" />
               Pre-Order Open
             </span>
-          ) : product.isWinterSpecial ? (
+          ) : isWinterSpecial ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-blue-600 text-white shadow-md">
               <FaSnowflake className="w-3.5 h-3.5" />
               Winter Special
@@ -145,7 +184,7 @@ Please let me know confirmation and delivery details. Thank you!`;
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-primary text-white shadow-md">
               <FaFire className="w-3.5 h-3.5" />
-              {product.badge || "Best Seller"}
+              {productBadge}
             </span>
           )}
         </div>
@@ -181,15 +220,17 @@ Please let me know confirmation and delivery details. Thank you!`;
       {/* Product Details */}
       <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between">
         <div>
-          <Link href={`/products/${product.id}`} className="block group/title">
+          <Link href={`/products/${product.slug || product.id}`} className="block group/title">
             <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug group-hover/title:text-primary transition-colors">
               {product.name}
             </h3>
           </Link>
 
-          <p className="text-xs sm:text-sm font-semibold text-primary mt-1 mb-2">
-            {product.tagline}
-          </p>
+          {product.tagline && (
+            <p className="text-xs sm:text-sm font-semibold text-primary mt-1 mb-2">
+              {product.tagline}
+            </p>
+          )}
 
           {/* Pre-Order Expected Date & Deposit Banner */}
           {effectiveMode === "pre_order" && (
@@ -198,55 +239,59 @@ Please let me know confirmation and delivery details. Thank you!`;
                 <FaClock className="text-amber-600 shrink-0" />
                 <span>Expected: {expectedNote}</span>
               </div>
-              {liveApiData?.preOrder?.depositRequired && (
+              {product.preOrder?.depositRequired && (
                 <p className="text-[11px] text-amber-800">
                   Advance deposit: ৳
-                  {liveApiData.preOrder.depositAmount ||
-                    `${liveApiData.preOrder.depositPercent}%`}{" "}
+                  {product.preOrder.depositAmount ||
+                    `${product.preOrder.depositPercent}%`}{" "}
                   on WhatsApp
                 </p>
               )}
             </div>
           )}
 
-          <p className="text-sm text-slate-600 leading-relaxed mb-6 line-clamp-3">
-            {product.description}
-          </p>
+          {product.description && (
+            <p className="text-sm text-slate-600 leading-relaxed mb-6 line-clamp-3">
+              {product.description}
+            </p>
+          )}
 
           {/* Size / Weight Selector */}
-          <div className="mb-6">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
-              Select Size & Quantity:
-            </label>
-            <div className="grid grid-cols-1 gap-2">
-              {product.options.map((option) => {
-                const isSelected = selectedOption === option;
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setSelectedOption(option)}
-                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left text-xs sm:text-sm font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                      isSelected
-                        ? "border-primary bg-orange-50/80 text-orange-950 shadow-xs ring-1 ring-primary"
-                        : "border-slate-200 bg-slate-50/60 text-slate-700 hover:border-orange-300"
-                    }`}
-                  >
-                    <span className="truncate">{option}</span>
-                    <span
-                      className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ml-2 ${
+          {formattedOptions.length > 0 && (
+            <div className="mb-6">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                Select Size & Quantity:
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                {formattedOptions.map((option) => {
+                  const isSelected = selectedOption === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setSelectedOption(option)}
+                      className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left text-xs sm:text-sm font-semibold whitespace-nowrap transition-all cursor-pointer ${
                         isSelected
-                          ? "border-primary bg-primary text-white"
-                          : "border-slate-300 bg-white"
+                          ? "border-primary bg-orange-50/80 text-orange-950 shadow-xs ring-1 ring-primary"
+                          : "border-slate-200 bg-slate-50/60 text-slate-700 hover:border-orange-300"
                       }`}
                     >
-                      {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                    </span>
-                  </button>
-                );
-              })}
+                      <span className="truncate">{option}</span>
+                      <span
+                        className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ml-2 ${
+                          isSelected
+                            ? "border-primary bg-primary text-white"
+                            : "border-slate-300 bg-white"
+                        }`}
+                      >
+                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Action Buttons & Policy Line */}
@@ -296,7 +341,7 @@ Please let me know confirmation and delivery details. Thank you!`;
                   className="inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-950 border border-orange-200 font-bold text-xs sm:text-sm whitespace-nowrap transition cursor-pointer active:scale-98"
                 >
                   <FaShoppingBag className="w-4 h-4 text-primary shrink-0" />
-                  <span>{justAdded ? "Added ✓" : "Add to Cart"}</span>
+                  <span>{justAdded ? "Added" : "Add to Cart"}</span>
                 </button>
 
                 {/* Direct Website Order Now Button */}
@@ -324,7 +369,7 @@ Please let me know confirmation and delivery details. Thank you!`;
 
                 {/* View Full Details */}
                 <Link
-                  href={`/products/${product.id}`}
+                  href={`/products/${product.slug || product.id}`}
                   className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs whitespace-nowrap transition cursor-pointer"
                 >
                   <span>Full Details</span>
@@ -340,34 +385,39 @@ Please let me know confirmation and delivery details. Thank you!`;
 }
 
 export default function Products() {
-  const { products } = siteConfig;
-  const [liveProductsMap, setLiveProductsMap] = useState<Record<string, PublicProductApiItem>>({});
+  const [products, setProducts] = useState<DbProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchProducts = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      let res = await fetch("/api/products", { cache: "no-store" });
+      if (!res.ok) {
+        res = await fetch(`${BACKEND_URL}/api/products`, { cache: "no-store" });
+      }
+
+      if (!res.ok) {
+        throw new Error("Failed to load products from database");
+      }
+
+      const data = await res.json();
+      if (Array.isArray(data.products)) {
+        setProducts(data.products);
+      } else {
+        setProducts([]);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to connect to database");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchLiveProducts() {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/products`, {
-          next: { revalidate: 60 },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.products && Array.isArray(data.products)) {
-            const map: Record<string, PublicProductApiItem> = {};
-            data.products.forEach((p: PublicProductApiItem) => {
-              // Map by slug or code
-              if (p.slug) map[p.slug] = p;
-              if (p.code) map[p.code.toLowerCase()] = p;
-            });
-            setLiveProductsMap(map);
-          }
-        }
-      } catch (err) {
-        // Graceful fallback to static siteConfig without throwing
-        console.warn("Live products API unavailable, using fallback siteConfig:", err);
-      }
-    }
-
-    fetchLiveProducts();
+    fetchProducts();
   }, []);
 
   return (
@@ -385,22 +435,57 @@ export default function Products() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10 items-stretch">
-          {products.map((product) => {
-            const liveData =
-              liveProductsMap[product.id] ||
-              liveProductsMap[product.id.replace(/-/g, "")] ||
-              undefined;
-
-            return (
-              <ProductCard
-                key={product.id}
-                product={product}
-                liveApiData={liveData}
-              />
-            );
-          })}
-        </div>
+        {loading ? (
+          /* Loading Skeletons */
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10 items-stretch">
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex flex-col bg-white rounded-3xl border border-orange-200/90 shadow-md shadow-orange-500/5 overflow-hidden animate-pulse"
+              >
+                <div className="w-full aspect-4/3 bg-slate-100" />
+                <div className="p-6 sm:p-8 space-y-4">
+                  <div className="h-6 bg-slate-200 rounded-md w-3/4" />
+                  <div className="h-4 bg-slate-100 rounded-md w-1/2" />
+                  <div className="space-y-2 pt-2">
+                    <div className="h-4 bg-slate-100 rounded-md w-full" />
+                    <div className="h-4 bg-slate-100 rounded-md w-5/6" />
+                  </div>
+                  <div className="space-y-2 pt-4">
+                    <div className="h-10 bg-slate-100 rounded-xl w-full" />
+                    <div className="h-10 bg-slate-100 rounded-xl w-full" />
+                  </div>
+                  <div className="pt-4 grid grid-cols-2 gap-2">
+                    <div className="h-12 bg-slate-200 rounded-xl" />
+                    <div className="h-12 bg-slate-200 rounded-xl" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : error && products.length === 0 ? (
+          <div className="max-w-md mx-auto p-8 rounded-3xl bg-white border border-red-200 text-center space-y-4 shadow-sm">
+            <p className="text-sm font-semibold text-red-600">{error}</p>
+            <button
+              type="button"
+              onClick={fetchProducts}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-primary hover:bg-primary-hover rounded-xl shadow-xs transition cursor-pointer"
+            >
+              <FaRedoAlt className="w-3 h-3" />
+              <span>Retry</span>
+            </button>
+          </div>
+        ) : products.length === 0 ? (
+          <div className="text-center py-12 text-slate-500 text-sm font-medium">
+            No products available in the database at the moment.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10 items-stretch">
+            {products.map((product) => (
+              <ProductCard key={product.id || product.slug} product={product} />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

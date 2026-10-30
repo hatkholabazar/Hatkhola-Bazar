@@ -558,18 +558,18 @@ Thank you for choosing artisanal authenticity!`;
 
         {/* Pre-Orders Table */}
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+          <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10 shadow-2xs">
                 <tr>
-                  <th className="py-3 px-4">Pre-Order #</th>
-                  <th className="py-3 px-4">Customer & Channel</th>
-                  <th className="py-3 px-4">Items & Demand</th>
-                  <th className="py-3 px-4">Quoted Total</th>
-                  <th className="py-3 px-4">Deposit Held</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Expected Date</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Pre-Order #</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Customer & Channel</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Items & Demand</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Quoted Total</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Deposit Held</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Status</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Expected Date</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -755,7 +755,7 @@ Thank you for choosing artisanal authenticity!`;
                     </p>
                     {selectedPreOrder.address && (
                       <p className="text-slate-500 text-xs mt-1">
-                        📍 {selectedPreOrder.address}
+                        Address: {selectedPreOrder.address}
                       </p>
                     )}
                   </div>

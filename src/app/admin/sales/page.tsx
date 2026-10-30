@@ -321,20 +321,20 @@ export default function AdminSalesPage() {
 
         {/* Sales Table */}
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
+          <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase sticky top-0 z-10 shadow-2xs">
                 <tr>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Customer & Address</th>
-                  <th className="py-3 px-4">Courier & Payment</th>
-                  <th className="py-3 px-4">Items (Qty)</th>
-                  <th className="py-3 px-4">Subtotal</th>
-                  <th className="py-3 px-4">Courier Fee</th>
-                  <th className="py-3 px-4">Total Payable</th>
-                  <th className="py-3 px-4">Profit</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Date</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Customer & Address</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Courier & Payment</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Items (Qty)</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Subtotal</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Courier Fee</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Total Payable</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Profit</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Status</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   FaUser,
   FaMapMarkerAlt,
@@ -20,8 +21,10 @@ import {
   FaCalendarAlt,
   FaShieldAlt,
   FaCamera,
+  FaSignOutAlt,
 } from "react-icons/fa";
 import { siteConfig } from "@/data/siteConfig";
+import { authClient } from "@/lib/auth-client";
 
 interface CustomerProfileData {
   name: string;
@@ -56,108 +59,40 @@ interface SavedOrder {
 }
 
 const DEFAULT_PROFILE: CustomerProfileData = {
-  name: "Tanvir Ahmed",
-  phone: "01711-234567",
+  name: "",
+  phone: "",
   district: "Inside Chittagong",
-  address: "House 14, Road 5, Nasirabad, Chattogram",
+  address: "",
   paymentMethod: "COD",
-  notes: "Please call before arrival",
+  notes: "",
 };
-
-// Temporary Demo Orders for Preview (can be removed later)
-const DEMO_ORDERS: SavedOrder[] = [
-  {
-    orderId: "HK-94821",
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    customer: {
-      name: "Tanvir Ahmed",
-      phone: "01711-234567",
-      address: "House 14, Road 5, Nasirabad, Chattogram",
-      notes: "Please call before arrival",
-    },
-    deliveryArea: "Inside Chittagong",
-    deliveryCharge: 60,
-    items: [
-      {
-        id: "danadar-ghee",
-        name: "Danadar Ghee (দানাদার ঘি)",
-        option: "1 kg Glass Jar",
-        price: 1400,
-        quantity: 1,
-      },
-      {
-        id: "khejur-gur",
-        name: "Khejur Patali Gur (খেজুরের পাটালি গুড়)",
-        option: "1 kg Traditional Block",
-        price: 450,
-        quantity: 2,
-      },
-    ],
-    subtotal: 2300,
-    grandTotal: 2360,
-    paymentMethod: "Cash on Delivery",
-    status: "Delivered",
-  },
-  {
-    orderId: "HK-94875",
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    customer: {
-      name: "Tanvir Ahmed",
-      phone: "01711-234567",
-      address: "House 14, Road 5, Nasirabad, Chattogram",
-    },
-    deliveryArea: "Inside Chittagong",
-    deliveryCharge: 60,
-    items: [
-      {
-        id: "danadar-ghee",
-        name: "Danadar Ghee (দানাদার ঘি)",
-        option: "500 g Glass Jar",
-        price: 750,
-        quantity: 2,
-      },
-    ],
-    subtotal: 1500,
-    grandTotal: 1560,
-    paymentMethod: "bKash",
-    paymentDetails: {
-      senderNumber: "01711234567",
-      trxId: "9K2M4P10L",
-    },
-    status: "In Transit",
-  },
-  {
-    orderId: "HK-93102",
-    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-    customer: {
-      name: "Tanvir Ahmed",
-      phone: "01711-234567",
-      address: "GEC Circle, Chattogram",
-    },
-    deliveryArea: "Inside Chittagong",
-    deliveryCharge: 60,
-    items: [
-      {
-        id: "khejur-gur",
-        name: "Khejur Patali Gur (খেজুরের পাটালি গুড়)",
-        option: "5 kg Saver Pack",
-        price: 2150,
-        quantity: 1,
-      },
-    ],
-    subtotal: 2150,
-    grandTotal: 2210,
-    paymentMethod: "Cash on Delivery",
-    status: "Delivered",
-  },
-];
 
 export default function CustomerProfilePage() {
   const { business } = siteConfig;
+  const router = useRouter();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
+
   const [activeTab, setActiveTab] = useState<"orders" | "settings">("orders");
   const [profile, setProfile] = useState<CustomerProfileData>(DEFAULT_PROFILE);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [orders, setOrders] = useState<SavedOrder[]>([]);
+
+  // Route protection: redirect unauthenticated visitors
+  useEffect(() => {
+    if (!sessionPending && !session?.user) {
+      router.push("/sign-in?redirect=/profile");
+    }
+  }, [session, sessionPending, router]);
+
+  // Sync profile with session user
+  useEffect(() => {
+    if (session?.user?.name) {
+      setProfile((prev) => ({
+        ...prev,
+        name: session.user.name || prev.name,
+      }));
+    }
+  }, [session]);
 
   // Modals state
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<SavedOrder | null>(null);
@@ -195,30 +130,101 @@ export default function CustomerProfilePage() {
     setRefundImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
-  // Load profile and past orders from localStorage on mount
+  // Load profile and real orders from backend & localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem("hatkhola_customer_profile");
       if (stored) {
-        setProfile(JSON.parse(stored));
-      } else {
-        setProfile(DEFAULT_PROFILE);
+        const parsed = JSON.parse(stored);
+        setProfile((prev) => ({
+          ...DEFAULT_PROFILE,
+          ...parsed,
+          name: session?.user?.name || parsed.name || "",
+        }));
+      } else if (session?.user?.name) {
+        setProfile((prev) => ({
+          ...DEFAULT_PROFILE,
+          name: session.user.name,
+        }));
+      }
+    } catch {
+      setProfile(DEFAULT_PROFILE);
+    }
+  }, [session]);
+
+  // Fetch real orders from database
+  useEffect(() => {
+    if (!session?.user) return;
+
+    const fetchRealOrders = async () => {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        "http://localhost:5000";
+
+      try {
+        const headers: Record<string, string> = {};
+        const token = (session as any)?.session?.token;
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+          headers["x-session-token"] = token;
+        }
+
+        const res = await fetch(`${backendUrl}/api/account/orders`, {
+          headers,
+          credentials: "include",
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.orders)) {
+            const mapped: SavedOrder[] = data.orders.map((o: any) => ({
+              orderId: o.orderNo || o.id,
+              createdAt: o.createdAt,
+              customer: {
+                name: session?.user?.name || profile.name || "Customer",
+                phone: profile.phone || "",
+                address: profile.address || "",
+              },
+              deliveryArea: "Standard Courier",
+              deliveryCharge: 60,
+              items: (o.items || []).map((it: any) => ({
+                id: it.productName,
+                name: it.productName,
+                option: it.optionLabel,
+                price: it.sellingPrice,
+                quantity: Math.max(1, Math.round((it.qtyG || 1000) / 1000)),
+              })),
+              subtotal: o.totalAmount,
+              grandTotal: o.totalAmount,
+              paymentMethod: o.paymentMethod || "COD",
+              status: o.statusLabel?.en || o.status || "Processing",
+            }));
+            setOrders(mapped);
+            return;
+          }
+        }
+      } catch {
+        // Fallback to local storage if offline
       }
 
-      const storedOrders = localStorage.getItem("hatkhola_orders");
-      if (storedOrders) {
-        const parsed = JSON.parse(storedOrders);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setOrders(parsed);
-          return;
+      try {
+        const storedOrders = localStorage.getItem("hatkhola_orders");
+        if (storedOrders) {
+          const parsed = JSON.parse(storedOrders);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setOrders(parsed);
+            return;
+          }
         }
+      } catch {
+        // Ignore
       }
-      // Use demo orders when no orders have been placed in localStorage
-      setOrders(DEMO_ORDERS);
-    } catch {
-      setOrders(DEMO_ORDERS);
-    }
-  }, []);
+      setOrders([]);
+    };
+
+    fetchRealOrders();
+  }, [session, profile.name, profile.phone, profile.address]);
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -292,6 +298,22 @@ export default function CustomerProfilePage() {
     }
   };
 
+  if (sessionPending) {
+    return (
+      <div className="min-h-screen bg-[#FDFBF7] text-slate-800 pb-24">
+        <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10 animate-pulse">
+          <div className="h-6 w-32 bg-orange-100 rounded-lg mb-6" />
+          <div className="flex flex-col items-center mb-8">
+            <div className="w-16 h-16 rounded-3xl bg-orange-100 mb-3" />
+            <div className="h-8 w-56 bg-orange-200/60 rounded-xl mb-2" />
+            <div className="h-4 w-72 bg-orange-100 rounded-lg" />
+          </div>
+          <div className="h-64 bg-white rounded-3xl border border-orange-200/60" />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 pb-24">
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
@@ -303,12 +325,38 @@ export default function CustomerProfilePage() {
             <FaArrowLeft className="w-3.5 h-3.5 shrink-0" />
             <span>Back to Home</span>
           </Link>
-          <Link
-            href="/refund-policy"
-            className="text-xs font-bold text-slate-500 hover:text-primary transition whitespace-nowrap"
-          >
-            Refund Policy
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/refund-policy"
+              className="text-xs font-bold text-slate-500 hover:text-primary transition whitespace-nowrap"
+            >
+              Refund Policy
+            </Link>
+            <button
+              type="button"
+              onClick={async () => {
+                document.cookie =
+                  "hatkhola_admin_token=; path=/; max-age=0; SameSite=Lax";
+                try {
+                  localStorage.removeItem("hatkhola_admin_token");
+                } catch {
+                  // Ignore storage errors
+                }
+                await authClient.signOut({
+                  fetchOptions: {
+                    onSuccess: () => {
+                      router.push("/login");
+                      router.refresh();
+                    },
+                  },
+                });
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 text-xs font-bold text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+            >
+              <FaSignOutAlt className="w-3.5 h-3.5" />
+              <span>Sign Out</span>
+            </button>
+          </div>
         </div>
         {/* Profile Header */}
         <div className="text-center max-w-xl mx-auto mb-8">
@@ -318,7 +366,22 @@ export default function CustomerProfilePage() {
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
             {profile.name ? `Welcome, ${profile.name}` : "Customer Dashboard"}
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1.5">
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 uppercase tracking-wide">
+              Role: {session?.user?.role || "user"}
+            </span>
+          </div>
+          {session?.user?.role === "admin" && (
+            <div className="mt-3">
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-orange-300 bg-orange-100 hover:bg-orange-200 text-orange-950 text-xs font-extrabold transition shadow-2xs"
+              >
+                <span>Go to Admin Dashboard</span>
+              </Link>
+            </div>
+          )}
+          <p className="text-xs sm:text-sm text-slate-600 mt-2">
             Manage your past online orders, request refunds, and maintain your saved delivery address.
           </p>
         </div>

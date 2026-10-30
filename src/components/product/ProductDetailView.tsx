@@ -363,7 +363,7 @@ Please let me know the confirmation and delivery schedule. Thank you!`;
                     className="flex items-center justify-center gap-1.5 sm:gap-2 py-3.5 px-2 sm:px-3 rounded-2xl bg-white hover:bg-orange-50 text-orange-950 font-extrabold text-xs sm:text-sm whitespace-nowrap shadow-sm transition-all cursor-pointer transform active:scale-98"
                   >
                     <FaShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary shrink-0" />
-                    <span>{justAdded ? "Added ✓" : "Add to Cart"}</span>
+                    <span>{justAdded ? "Added" : "Add to Cart"}</span>
                   </button>
 
                   {/* Top-Right: Order Online */}

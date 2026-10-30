@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,26 +18,76 @@ import {
   FaEye,
   FaEyeSlash,
   FaExclamationCircle,
+  FaSignOutAlt,
+  FaMapMarkerAlt,
 } from "react-icons/fa";
 import { useCart } from "@/context/CartContext";
 import { siteConfig } from "@/data/siteConfig";
+import { authClient } from "@/lib/auth-client";
+import { toast } from "@/lib/toast";
+import PathaoLocationPicker, {
+  PathaoLocationValue,
+} from "@/components/admin/PathaoLocationPicker";
+
+function parseOptionGrams(option: string): number {
+  const lower = (option || "").toLowerCase();
+  if (lower.includes("5 kg") || lower.includes("5kg")) return 5000;
+  if (lower.includes("2 kg") || lower.includes("2kg")) return 2000;
+  if (lower.includes("1 kg") || lower.includes("1kg") || lower.includes("১ কেজি")) return 1000;
+  if (lower.includes("500 g") || lower.includes("500g") || lower.includes("৫০০ গ্রাম")) return 500;
+  if (lower.includes("250 g") || lower.includes("250g") || lower.includes("২৫০ গ্রাম")) return 250;
+  const match = lower.match(/(\d+)\s*g/);
+  if (match) return parseInt(match[1], 10);
+  return 1000;
+}
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { business } = siteConfig;
   const { items, subtotal, totalCount, clearCart } = useCart();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
+
+  // Stable idempotency key per checkout attempt
+  const idempotencyKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `hb-idem-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    }
+  }, []);
+
+  // Form Field Refs for error focusing
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const addressInputRef = useRef<HTMLTextAreaElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordInputRef = useRef<HTMLInputElement>(null);
+  const termsCheckboxRef = useRef<HTMLInputElement>(null);
+  const senderNumberRef = useRef<HTMLInputElement>(null);
+  const trxIdRef = useRef<HTMLInputElement>(null);
 
   // Form State
   const [deliveryArea, setDeliveryArea] = useState<"ctg" | "outside">("ctg");
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Account creation fields
+  // Pathao Location Cascade State
+  const [pathaoLocation, setPathaoLocation] = useState<PathaoLocationValue>({
+    isValid: false,
+  });
+
+  // Guest Account creation fields
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [honeypot, setHoneypot] = useState("");
 
   // Payment Method
   const [paymentMethod, setPaymentMethod] = useState<"COD" | "bKash" | "Nagad">("COD");
@@ -47,7 +97,7 @@ export default function CheckoutPage() {
 
   // Status & Success state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [emailExistsAlert, setEmailExistsAlert] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<{
     orderId: string;
     total: number;
@@ -59,20 +109,39 @@ export default function CheckoutPage() {
     deliveryAddress: string;
   } | null>(null);
 
-  // Delivery calculation: Inside Ctg = 60 tk, Outside Ctg = 120 tk
+  // Delivery charge calculation: Inside Ctg = 60 tk, Outside Ctg = 120 tk
   const deliveryCharge = deliveryArea === "ctg" ? 60 : 120;
   const grandTotal = subtotal + (items.length > 0 ? deliveryCharge : 0);
 
-  // Load saved profile data if returning customer
+  // Prefill details from session or draft
+  useEffect(() => {
+    if (session?.user) {
+      if (session.user.name && !name) setName(session.user.name);
+      if (session.user.email && !email) setEmail(session.user.email);
+    }
+  }, [session]);
+
+  // Load draft from sessionStorage or localStorage
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("hatkhola_customer_profile");
-      if (stored) {
-        const p = JSON.parse(stored);
+      const draft = sessionStorage.getItem("hatkhola_checkout_draft");
+      if (draft) {
+        const p = JSON.parse(draft);
         if (p.name) setName(p.name);
+        if (p.email) setEmail(p.email);
         if (p.phone) setPhone(p.phone);
         if (p.address) setAddress(p.address);
-        if (p.district === "Outside Ctg") setDeliveryArea("outside");
+        if (p.notes) setNotes(p.notes);
+        if (p.deliveryArea) setDeliveryArea(p.deliveryArea);
+      } else {
+        const stored = localStorage.getItem("hatkhola_customer_profile");
+        if (stored) {
+          const p = JSON.parse(stored);
+          if (p.name) setName(p.name);
+          if (p.phone) setPhone(p.phone);
+          if (p.address) setAddress(p.address);
+          if (p.district === "Outside Ctg") setDeliveryArea("outside");
+        }
       }
     } catch {
       // Ignore storage errors
@@ -85,127 +154,297 @@ export default function CheckoutPage() {
     setTimeout(() => setCopiedNumber(false), 2500);
   };
 
+  const handleSignOut = async () => {
+    try {
+      await authClient.signOut({
+        fetchOptions: {
+          onSuccess: () => {
+            toast.info("Signed out successfully", { id: "signout-toast" });
+            router.refresh();
+          },
+        },
+      });
+    } catch {
+      toast.error("Failed to sign out", { id: "signout-err" });
+    }
+  };
+
   const handleConfirmOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg("");
+    setEmailExistsAlert(false);
 
-    // Validation
-    if (!name.trim() || !phone.trim() || !address.trim()) {
-      setErrorMsg("Please fill in your Full Name, Phone Number, and Delivery Address.");
+    // Honeypot check
+    if (honeypot && honeypot.trim().length > 0) {
       return;
     }
 
-    if (!password.trim() || password.length < 6) {
-      setErrorMsg("Please create a password of at least 6 characters for your customer account.");
+    // 1. Validation Checks
+    if (!name.trim() || name.trim().length < 3) {
+      toast.error("Full name must be at least 3 characters", { id: "checkout-val" });
+      nameInputRef.current?.focus();
       return;
     }
 
-    if (password !== confirmPassword) {
-      setErrorMsg("Password and Confirm Password do not match. Please re-check.");
+    const cleanPhone = phone.replace(/[\s\-()]/g, "");
+    const normalizedPhone = cleanPhone.startsWith("+880")
+      ? "0" + cleanPhone.slice(4)
+      : cleanPhone.startsWith("880")
+      ? "0" + cleanPhone.slice(3)
+      : cleanPhone;
+
+    if (!/^01[3-9]\d{8}$/.test(normalizedPhone)) {
+      toast.error("Valid Bangladesh mobile number required (01XXXXXXXXX)", {
+        id: "checkout-val",
+      });
+      phoneInputRef.current?.focus();
       return;
     }
 
+    if (!address.trim() || address.trim().length < 10) {
+      toast.error("Delivery address must be between 10 and 220 characters", {
+        id: "checkout-val",
+      });
+      addressInputRef.current?.focus();
+      return;
+    }
+
+    // Guest Authentication Validation
+    const isGuest = !session?.user;
+    if (isGuest) {
+      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        toast.error("Valid email address is required for your customer account", {
+          id: "checkout-val",
+        });
+        emailInputRef.current?.focus();
+        return;
+      }
+
+      if (!password || password.length < 8) {
+        toast.error("Password must be at least 8 characters long", { id: "checkout-val" });
+        passwordInputRef.current?.focus();
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        toast.error("Password and Confirm Password do not match", { id: "checkout-val" });
+        confirmPasswordInputRef.current?.focus();
+        return;
+      }
+
+      if (!agreedToTerms) {
+        toast.error("Please agree to the Terms and Privacy Policy to proceed", {
+          id: "checkout-val",
+        });
+        termsCheckboxRef.current?.focus();
+        return;
+      }
+    }
+
+    // Payment validation
     if (paymentMethod === "bKash" || paymentMethod === "Nagad") {
-      if (!senderNumber.trim() || !trxId.trim()) {
-        setErrorMsg(`Please provide your ${paymentMethod} sender number and Transaction ID (TrxID).`);
+      if (!senderNumber.trim()) {
+        toast.error(`Please provide your ${paymentMethod} sender number`, {
+          id: "checkout-val",
+        });
+        senderNumberRef.current?.focus();
+        return;
+      }
+      if (!trxId.trim()) {
+        toast.error(`Please provide the Transaction ID (TrxID) from ${paymentMethod}`, {
+          id: "checkout-val",
+        });
+        trxIdRef.current?.focus();
         return;
       }
     }
 
     if (items.length === 0) {
-      setErrorMsg("Your cart is currently empty. Please add items before checking out.");
+      toast.error("Your cart is empty. Please add products before checking out.", {
+        id: "checkout-val",
+      });
       return;
     }
 
     setIsSubmitting(true);
 
-    const orderId = `HB-${Date.now().toString().slice(-6)}`;
-    const newOrder = {
-      orderId,
-      createdAt: new Date().toISOString(),
-      customer: {
-        name: name.trim(),
-        phone: phone.trim(),
-        address: address.trim(),
-        notes: notes.trim(),
-      },
-      deliveryArea: deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong",
-      deliveryCharge,
-      items: [...items],
-      subtotal,
-      grandTotal,
-      paymentMethod,
-      paymentDetails:
-        paymentMethod !== "COD"
-          ? {
-              senderNumber: senderNumber.trim(),
-              trxId: trxId.trim(),
-            }
-          : undefined,
-      status: "Confirmed",
-    };
-
-    // Save order in localStorage
-    try {
-      const existing = localStorage.getItem("hatkhola_orders");
-      const list = existing ? JSON.parse(existing) : [];
-      list.unshift(newOrder);
-      localStorage.setItem("hatkhola_orders", JSON.stringify(list));
-
-      // Save customer profile & account session
-      localStorage.setItem(
-        "hatkhola_customer_profile",
-        JSON.stringify({
+    // 2. If Guest: Auto Sign Up with Better Auth
+    if (isGuest) {
+      try {
+        const signUpResult = await authClient.signUp.email({
+          email: email.trim(),
+          password: password.trim(),
           name: name.trim(),
-          phone: phone.trim(),
-          address: address.trim(),
-          district: deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong",
-          notes: notes.trim(),
-          isRegistered: true,
-          lastOrderAt: new Date().toISOString(),
-        })
-      );
-    } catch {
-      // Ignore localStorage errors
+        });
+
+        if (signUpResult.error) {
+          const errMsg = signUpResult.error.message || "Account registration failed";
+          const lower = errMsg.toLowerCase();
+
+          if (
+            lower.includes("already exists") ||
+            lower.includes("user already exists") ||
+            lower.includes("email already in use") ||
+            lower.includes("duplicate")
+          ) {
+            // Save draft in sessionStorage without password
+            try {
+              sessionStorage.setItem(
+                "hatkhola_checkout_draft",
+                JSON.stringify({
+                  name: name.trim(),
+                  email: email.trim(),
+                  phone: normalizedPhone,
+                  address: address.trim(),
+                  deliveryArea,
+                  notes: notes.trim(),
+                  paymentMethod,
+                })
+              );
+            } catch {
+              // Ignore storage errors
+            }
+
+            setEmailExistsAlert(true);
+            toast.warning(
+              "An account with this email already exists. Please sign in to proceed.",
+              { id: "checkout-auth" }
+            );
+            setIsSubmitting(false);
+            return;
+          }
+
+          toast.error(errMsg, { id: "checkout-auth" });
+          setIsSubmitting(false);
+          return;
+        }
+      } catch (authErr: any) {
+        toast.error(authErr.message || "Failed to create account. Please try again.", {
+          id: "checkout-auth",
+        });
+        setIsSubmitting(false);
+        return;
+      }
     }
 
-    // Attempt to persist to API / Database
-    try {
-      await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          order: newOrder,
-          account: {
-            name: name.trim(),
-            phone: phone.trim(),
-            password: password.trim(),
-            address: address.trim(),
-          },
-        }),
-      });
-    } catch (err) {
-      console.warn("Could not save to remote backend, saved locally.", err);
-    }
+    // 3. Submit Order to Backend API
+    const toastId = toast.loading("Placing your order...", { id: "order-placement" });
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
-    // Success state
-    setPlacedOrder({
-      orderId,
-      total: grandTotal,
-      itemsCount: totalCount,
-      area: deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong",
-      customerName: name.trim(),
-      phone: phone.trim(),
+    const payload = {
+      fullName: name.trim(),
+      phone: normalizedPhone,
+      address: address.trim(),
+      cityId: pathaoLocation.cityId,
+      cityName: pathaoLocation.cityName,
+      zoneId: pathaoLocation.zoneId,
+      zoneName: pathaoLocation.zoneName,
+      areaId: pathaoLocation.areaId,
+      areaName: pathaoLocation.areaName,
+      deliveryArea,
+      items: items.map((it) => ({
+        productId: it.productId || it.id,
+        optionLabel: it.option || it.name,
+        qtyG: parseOptionGrams(it.option),
+        quantity: it.quantity,
+      })),
       paymentMethod:
         paymentMethod === "COD"
-          ? "Cash on Delivery"
-          : `${paymentMethod} (TrxID: ${trxId.trim()})`,
-      deliveryAddress: address.trim(),
-    });
+          ? "cod"
+          : paymentMethod === "bKash"
+          ? "bkash"
+          : "nagad",
+      senderNumber: senderNumber.trim() || undefined,
+      trxId: trxId.trim() || undefined,
+      notes: notes.trim() || undefined,
+      idempotencyKey: idempotencyKeyRef.current,
+      website: honeypot,
+    };
 
-    clearCart();
-    setIsSubmitting(false);
+    try {
+      const response = await fetch(`${backendUrl}/api/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const errorText = data.error || data.message || "Failed to place order";
+        toast.error(errorText, { id: toastId });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Order Success!
+      toast.success(`Order #${data.orderId} placed successfully!`, { id: toastId });
+
+      // Clean up cart and draft
+      clearCart();
+      try {
+        sessionStorage.removeItem("hatkhola_checkout_draft");
+        localStorage.setItem(
+          "hatkhola_customer_profile",
+          JSON.stringify({
+            name: name.trim(),
+            phone: normalizedPhone,
+            address: address.trim(),
+            district: deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong",
+            notes: notes.trim(),
+            isRegistered: true,
+            lastOrderAt: new Date().toISOString(),
+          })
+        );
+      } catch {
+        // Ignore storage errors
+      }
+
+      setPlacedOrder({
+        orderId: data.orderId,
+        total: data.total || grandTotal,
+        itemsCount: totalCount,
+        area: deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong",
+        customerName: name.trim(),
+        phone: normalizedPhone,
+        paymentMethod:
+          paymentMethod === "COD"
+            ? "Cash on Delivery"
+            : `${paymentMethod} (TrxID: ${trxId.trim()})`,
+        deliveryAddress: address.trim(),
+      });
+
+      setIsSubmitting(false);
+    } catch (orderErr: any) {
+      toast.error(
+        orderErr.message || "Network error. Please try clicking Confirm Order again.",
+        { id: toastId }
+      );
+      setIsSubmitting(false);
+    }
   };
+
+  // Skeleton view during session check to prevent layout shift
+  if (sessionPending) {
+    return (
+      <div className="min-h-screen bg-[#FDFBF7] text-slate-800 pb-24">
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 animate-pulse">
+          <div className="h-6 w-36 bg-orange-100 rounded-lg mb-8" />
+          <div className="h-10 w-64 bg-orange-200/60 rounded-xl mb-8" />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-7 space-y-6">
+              <div className="h-44 bg-white rounded-3xl border border-orange-200/60" />
+              <div className="h-64 bg-white rounded-3xl border border-orange-200/60" />
+              <div className="h-48 bg-white rounded-3xl border border-orange-200/60" />
+            </div>
+            <div className="lg:col-span-5">
+              <div className="h-96 bg-white rounded-3xl border border-orange-200/60" />
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 pb-24">
@@ -224,10 +463,11 @@ export default function CheckoutPage() {
             <span>100% Encrypted & Secure Checkout</span>
           </div>
         </div>
+
         {/* ORDER SUCCESS VIEW */}
         {placedOrder ? (
           <div className="max-w-2xl mx-auto text-center animate-fade-in">
-            <div className="w-20 h-20 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-5 shadow-sm">
+            <div className="w-20 h-20 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-5 shadow-xs">
               <FaCheckCircle className="w-12 h-12" />
             </div>
 
@@ -246,7 +486,7 @@ export default function CheckoutPage() {
             <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-white border border-orange-200/90 shadow-md text-left space-y-3.5 text-xs sm:text-sm">
               <div className="flex justify-between items-center pb-3 border-b border-slate-100">
                 <span className="text-slate-500 font-medium">Order Reference:</span>
-                <span className="font-black text-slate-900 font-mono text-sm sm:text-base text-primary">
+                <span className="font-black font-mono text-sm sm:text-base text-primary">
                   {placedOrder.orderId}
                 </span>
               </div>
@@ -268,7 +508,9 @@ export default function CheckoutPage() {
 
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Delivery Address:</span>
-                <span className="font-bold text-slate-800 text-right max-w-xs">{placedOrder.deliveryAddress}</span>
+                <span className="font-bold text-slate-800 text-right max-w-xs">
+                  {placedOrder.deliveryAddress}
+                </span>
               </div>
 
               <div className="flex justify-between">
@@ -285,22 +527,15 @@ export default function CheckoutPage() {
                 <span>Total Amount Payable:</span>
                 <span className="text-primary text-xl font-sans">৳ {placedOrder.total}</span>
               </div>
-
-              <div className="mt-4 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-3xs sm:text-xs text-amber-900 flex items-center gap-2">
-                <FaLock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                <span>
-                  Your account has been created with your provided password. You can track this order in your profile anytime!
-                </span>
-              </div>
             </div>
 
             {/* Actions */}
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
               <Link
-                href="/profile"
+                href="/account/orders"
                 className="inline-flex items-center justify-center gap-2 py-3.5 px-4 sm:px-6 rounded-xl bg-primary hover:bg-primary-hover text-white font-extrabold text-xs sm:text-sm whitespace-nowrap shadow-md shadow-orange-500/20 transition cursor-pointer"
               >
-                <span>View Order in Profile / Order History</span>
+                <span>View My Orders History</span>
               </Link>
               <Link
                 href="/"
@@ -311,14 +546,12 @@ export default function CheckoutPage() {
             </div>
           </div>
         ) : items.length === 0 ? (
-          /* EMPTY CART STATE ON CHECKOUT */
+          /* EMPTY CART STATE */
           <div className="max-w-md mx-auto text-center py-16">
             <div className="w-20 h-20 rounded-3xl bg-orange-100 text-orange-400 flex items-center justify-center mx-auto mb-4">
               <FaShoppingBag className="w-10 h-10" />
             </div>
-            <h2 className="text-xl font-black text-slate-900">
-              Your Cart is Empty
-            </h2>
+            <h2 className="text-xl font-black text-slate-900">Your Cart is Empty</h2>
             <p className="text-xs sm:text-sm text-slate-600 mt-1.5 mb-6">
               Please choose our pure artisanal products before accessing the checkout page.
             </p>
@@ -331,32 +564,77 @@ export default function CheckoutPage() {
             </Link>
           </div>
         ) : (
-          /* CHECKOUT FORM & SUMMARY TWO-COLUMN LAYOUT */
+          /* CHECKOUT FORM */
           <div>
-            <div className="mb-8">
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
-                Complete Your Order
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-600 mt-1">
-                Direct website checkout with authentic artisanal guarantees. No hassle, no complicated registration.
-              </p>
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
+                  Complete Your Order
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-600 mt-1">
+                  Direct online checkout with authentic artisanal guarantees. Server-verified pricing and reliable delivery.
+                </p>
+              </div>
+
+              {/* Logged in User Pill */}
+              {session?.user && (
+                <div className="self-start sm:self-auto flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-orange-50 border border-orange-200/90 text-xs text-slate-700 shadow-2xs">
+                  <FaUser className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span>
+                    Ordering as <strong className="text-slate-900">{session.user.name}</strong>{" "}
+                    <span className="text-slate-400">({session.user.email})</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    title="Sign out to order as a different account"
+                    className="ml-1 text-slate-400 hover:text-rose-600 transition flex items-center gap-1 font-bold text-3xs cursor-pointer"
+                  >
+                    <FaSignOutAlt className="w-3 h-3" />
+                    <span>Not you?</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {errorMsg && (
-              <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-bold flex items-center gap-2.5 shadow-sm animate-fade-in">
-                <FaExclamationCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{errorMsg}</span>
+            {/* Email Already Registered Warning Box */}
+            {emailExistsAlert && (
+              <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs sm:text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+                <div className="flex items-center gap-2.5">
+                  <FaExclamationCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    An account with <strong>{email}</strong> already exists. Sign in with your password to link your order.
+                  </span>
+                </div>
+                <Link
+                  href={`/sign-in?redirect=/checkout`}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs whitespace-nowrap transition cursor-pointer"
+                >
+                  Sign In to Continue
+                </Link>
               </div>
             )}
 
             <form onSubmit={handleConfirmOrder} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Bot Honeypot */}
+              <input
+                type="text"
+                name="website"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                className="hidden"
+                aria-hidden="true"
+              />
+
               {/* LEFT COLUMN: DELIVERY, ACCOUNT, PAYMENT (7 Cols) */}
               <div className="lg:col-span-7 space-y-6">
-                {/* 1. Delivery Destination */}
+                {/* 1. Delivery Region */}
                 <div className="p-5 sm:p-6 rounded-3xl bg-white border border-orange-200/80 shadow-xs">
                   <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 mb-3 flex items-center gap-2">
                     <FaTruck className="text-primary w-4 h-4" />
-                    <span>1. Delivery Destination</span>
+                    <span>1. Delivery Destination Region</span>
                   </h2>
                   <p className="text-3xs sm:text-xs text-slate-500 mb-3">
                     Select your delivery region to calculate accurate courier charges.
@@ -376,13 +654,9 @@ export default function CheckoutPage() {
                         <span className="block font-extrabold text-xs sm:text-sm text-slate-900">
                           Inside Chittagong
                         </span>
-                        <span className="text-3xs text-slate-500">
-                          Chattogram City & Metro area
-                        </span>
+                        <span className="text-3xs text-slate-500">Chattogram Metro Area</span>
                       </div>
-                      <span className="text-sm font-black text-primary font-sans">
-                        ৳ 60
-                      </span>
+                      <span className="text-sm font-black text-primary font-sans">৳ 60</span>
                     </button>
 
                     <button
@@ -398,13 +672,9 @@ export default function CheckoutPage() {
                         <span className="block font-extrabold text-xs sm:text-sm text-slate-900">
                           Outside Chittagong
                         </span>
-                        <span className="text-3xs text-slate-500">
-                          All other districts of Bangladesh
-                        </span>
+                        <span className="text-3xs text-slate-500">All other districts of BD</span>
                       </div>
-                      <span className="text-sm font-black text-primary font-sans">
-                        ৳ 120
-                      </span>
+                      <span className="text-sm font-black text-primary font-sans">৳ 120</span>
                     </button>
                   </div>
                 </div>
@@ -422,6 +692,7 @@ export default function CheckoutPage() {
                         Full Name <span className="text-red-500">*</span>
                       </label>
                       <input
+                        ref={nameInputRef}
                         type="text"
                         required
                         value={name}
@@ -436,11 +707,12 @@ export default function CheckoutPage() {
                         Phone Number (For Courier) <span className="text-red-500">*</span>
                       </label>
                       <input
+                        ref={phoneInputRef}
                         type="tel"
                         required
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="e.g. +880 18XXXXXXXX"
+                        placeholder="e.g. 018XXXXXXXX"
                         className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary bg-white text-slate-900"
                       />
                     </div>
@@ -448,15 +720,38 @@ export default function CheckoutPage() {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Full Delivery Address (House, Road, Area, Ward/Thana) <span className="text-red-500">*</span>
+                      Full Delivery Address (House, Road, Area) <span className="text-red-500">*</span>
                     </label>
                     <textarea
+                      ref={addressInputRef}
                       rows={2}
                       required
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      placeholder="e.g. House #24, Road #3, GEC Circle, Chattogram"
+                      placeholder="e.g. House #24, Road #3, Sector #10, Uttara, Dhaka"
                       className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary bg-white text-slate-900"
+                    />
+                  </div>
+
+                  {/* Pathao Reusable Cascading Location Picker */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <FaMapMarkerAlt className="text-primary w-3.5 h-3.5" />
+                      <span>Pathao Delivery Hub & Area (Optional for exact dispatch)</span>
+                    </div>
+                    <PathaoLocationPicker
+                      isPublic={true}
+                      onChange={(val) => {
+                        setPathaoLocation(val);
+                        if (val.cityName) {
+                          const lowerCity = val.cityName.toLowerCase();
+                          if (lowerCity.includes("chittagong") || lowerCity.includes("chattogram")) {
+                            setDeliveryArea("ctg");
+                          } else {
+                            setDeliveryArea("outside");
+                          }
+                        }
+                      }}
                     />
                   </div>
 
@@ -468,90 +763,140 @@ export default function CheckoutPage() {
                       type="text"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder="e.g. Please call 30 mins before arrival or leave with gatekeeper"
+                      placeholder="e.g. Call before arrival or leave with security"
                       className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary bg-white text-slate-900"
                     />
                   </div>
                 </div>
 
-                {/* 3. Account Password (Zero-friction Customer Registration) */}
-                <div className="p-5 sm:p-6 rounded-3xl bg-white border border-orange-200/80 shadow-xs space-y-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                        <FaLock className="text-primary w-4 h-4" />
-                        <span>3. Account Security (Customer Profile)</span>
-                      </h2>
-                      <p className="text-3xs sm:text-xs text-slate-500 mt-1">
-                        We don&apos;t make you go through tedious sign up pages! Set a password here so your account is created automatically to track orders and request refunds.
-                      </p>
-                    </div>
-                    <span className="text-3xs font-extrabold text-primary bg-orange-100 px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0">
-                      Auto Setup
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        Create Password <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          required
-                          minLength={6}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="At least 6 characters"
-                          className="w-full px-4 py-2.5 pr-10 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary bg-white text-slate-900"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          {showPassword ? <FaEyeSlash className="w-4 h-4" /> : <FaEye className="w-4 h-4" />}
-                        </button>
+                {/* 3. Account Security (Shown ONLY to Guests) */}
+                {!session?.user && (
+                  <div className="p-5 sm:p-6 rounded-3xl bg-white border border-orange-200/80 shadow-xs space-y-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                          <FaLock className="text-primary w-4 h-4" />
+                          <span>3. Account Details & Security</span>
+                        </h2>
+                        <p className="text-3xs sm:text-xs text-slate-500 mt-1">
+                          Your customer account will be created automatically. You can track your parcel, view past orders, and request re-orders anytime.
+                        </p>
                       </div>
+                      <span className="text-3xs font-extrabold text-primary bg-orange-100 px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0">
+                        Auto Setup
+                      </span>
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        Confirm Password <span className="text-red-500">*</span>
+                        Account Email Address <span className="text-red-500">*</span>
                       </label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          required
-                          minLength={6}
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          placeholder="Re-enter your password"
-                          className={`w-full px-4 py-2.5 pr-10 text-xs sm:text-sm rounded-xl border focus:outline-none focus:ring-2 bg-white text-slate-900 ${
-                            confirmPassword && confirmPassword !== password
-                              ? "border-rose-400 focus:ring-rose-400"
-                              : "border-slate-300 focus:ring-primary focus:border-primary"
-                          }`}
-                        />
-                        {confirmPassword && confirmPassword === password && (
-                          <FaCheck className="absolute right-3 top-3 text-emerald-500 w-4 h-4" />
-                        )}
+                      <input
+                        ref={emailInputRef}
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="e.g. yourname@example.com"
+                        className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary bg-white text-slate-900"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          Create Password <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            ref={passwordInputRef}
+                            type={showPassword ? "text" : "password"}
+                            required
+                            minLength={8}
+                            autoComplete="new-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Minimum 8 characters"
+                            className="w-full px-4 py-2.5 pr-10 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary bg-white text-slate-900"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            aria-label={showPassword ? "Hide password" : "Show password"}
+                            className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            {showPassword ? (
+                              <FaEyeSlash className="w-4 h-4" />
+                            ) : (
+                              <FaEye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          Confirm Password <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            ref={confirmPasswordInputRef}
+                            type={showPassword ? "text" : "password"}
+                            required
+                            minLength={8}
+                            autoComplete="new-password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Re-enter password"
+                            className={`w-full px-4 py-2.5 pr-10 text-xs sm:text-sm rounded-xl border focus:outline-none focus:ring-2 bg-white text-slate-900 ${
+                              confirmPassword && confirmPassword !== password
+                                ? "border-rose-400 focus:ring-rose-400"
+                                : "border-slate-300 focus:ring-primary focus:border-primary"
+                            }`}
+                          />
+                          {confirmPassword && confirmPassword === password && (
+                            <FaCheck className="absolute right-3 top-3 text-emerald-500 w-4 h-4" />
+                          )}
+                        </div>
                       </div>
                     </div>
+
+                    {/* Terms & Privacy Policy Checkbox */}
+                    <div className="pt-2">
+                      <label className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-600">
+                        <input
+                          ref={termsCheckboxRef}
+                          type="checkbox"
+                          checked={agreedToTerms}
+                          onChange={(e) => setAgreedToTerms(e.target.checked)}
+                          className="mt-0.5 rounded border-slate-300 text-primary focus:ring-primary shrink-0"
+                        />
+                        <span>
+                          I agree to Hatkhola-Bazar&apos;s{" "}
+                          <Link
+                            href="/refund-policy"
+                            target="_blank"
+                            className="text-primary font-bold hover:underline"
+                          >
+                            Terms of Service and Refund Policy
+                          </Link>
+                          .
+                        </span>
+                      </label>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* 4. Payment Method */}
                 <div className="p-5 sm:p-6 rounded-3xl bg-white border border-orange-200/80 shadow-xs space-y-4">
                   <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
                     <FaMoneyBillWave className="text-primary w-4 h-4" />
-                    <span>4. Payment Method</span>
+                    <span>{session?.user ? "3." : "4."} Payment Method</span>
                   </h2>
 
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { id: "COD", label: "Cash on Delivery", badge: "Most Popular" },
+                      { id: "COD", label: "Cash on Delivery", badge: "Pay on Arrival" },
                       { id: "bKash", label: "bKash", badge: "Personal / Agent" },
                       { id: "Nagad", label: "Nagad", badge: "Personal / Agent" },
                     ].map((pm) => (
@@ -584,7 +929,7 @@ export default function CheckoutPage() {
                             Send Money to Official {paymentMethod} Number:
                           </span>
                           <p className="text-3xs text-slate-600">
-                            Send total payable amount <strong>৳ {grandTotal}</strong> to this number:
+                            Send total payable amount <strong>৳ {grandTotal}</strong> to:
                           </p>
                         </div>
                         <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-amber-200 shadow-2xs">
@@ -605,9 +950,10 @@ export default function CheckoutPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         <div>
                           <label className="block text-xs font-bold text-slate-800 mb-1">
-                            Number you have sent from <span className="text-red-500">*</span>
+                            Number you sent from <span className="text-red-500">*</span>
                           </label>
                           <input
+                            ref={senderNumberRef}
                             type="tel"
                             required
                             value={senderNumber}
@@ -622,6 +968,7 @@ export default function CheckoutPage() {
                             Transaction ID (TrxID) <span className="text-red-500">*</span>
                           </label>
                           <input
+                            ref={trxIdRef}
                             type="text"
                             required
                             value={trxId}
@@ -634,7 +981,7 @@ export default function CheckoutPage() {
                     </div>
                   )}
 
-                  {/* Redesigned Professional Trust Badge (Item 2) */}
+                  {/* Authentic Trust Badge */}
                   <div className="rounded-2xl bg-amber-50/80 border border-amber-200/90 p-4 flex items-center gap-3.5 shadow-2xs">
                     <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center shrink-0 border border-amber-300/50">
                       <FaShieldAlt className="w-5 h-5 text-primary" />
@@ -647,7 +994,7 @@ export default function CheckoutPage() {
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                       </div>
                       <p className="text-3xs sm:text-xs text-slate-600 font-medium mt-0.5 leading-snug">
-                        Open and inspect the jar & packaging condition before making payment to the courier rider.
+                        Open and inspect the jar and seal packaging before making payment to the courier rider.
                       </p>
                     </div>
                   </div>
@@ -681,9 +1028,7 @@ export default function CheckoutPage() {
                           />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-slate-900 truncate">
-                            {item.name}
-                          </h4>
+                          <h4 className="font-bold text-slate-900 truncate">{item.name}</h4>
                           <p className="text-3xs text-primary font-semibold">
                             {item.option} × {item.quantity}
                           </p>
@@ -704,39 +1049,45 @@ export default function CheckoutPage() {
 
                     <div className="flex justify-between">
                       <span>
-                        Delivery Fee ({deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong"}):
+                        Delivery Fee (
+                        {deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong"}
+                        ):
                       </span>
-                      <span className="font-bold text-slate-900 font-sans">৳ {deliveryCharge}</span>
+                      <span className="font-bold text-slate-900 font-sans">
+                        ৳ {deliveryCharge}
+                      </span>
                     </div>
 
                     <div className="flex justify-between items-baseline pt-3 border-t border-orange-200 text-slate-900">
                       <span className="text-sm font-extrabold">Total Payable:</span>
-                      <span className="text-2xl font-black text-primary font-sans">৳ {grandTotal}</span>
+                      <span className="text-2xl font-black text-primary font-sans">
+                        ৳ {grandTotal}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Submit Order Button (NO WHATSAPP ON CHECKOUT PAGE) */}
+                  {/* Submit Order Button */}
                   <div className="pt-2">
                     <button
                       type="submit"
                       disabled={isSubmitting}
                       className="w-full inline-flex items-center justify-center gap-2 py-4 px-4 sm:px-6 rounded-2xl bg-primary hover:bg-primary-hover text-white font-black text-xs sm:text-sm whitespace-nowrap shadow-lg shadow-orange-500/25 transition cursor-pointer transform active:scale-98 disabled:opacity-50"
                     >
-                      <span className="whitespace-nowrap">
-                        {isSubmitting ? "Placing Order..." : `Confirm Online Order (৳ ${grandTotal})`}
+                      <span>
+                        {isSubmitting
+                          ? "Placing Order..."
+                          : `Confirm Online Order (৳ ${grandTotal})`}
                       </span>
                     </button>
                     <p className="text-center text-3xs text-slate-400 mt-2">
-                      By confirming, your order will be booked directly on our system.
+                      Server-recalculated prices. Pathao delivery dispatched upon review.
                     </p>
                   </div>
                 </div>
 
-                {/* Direct Return / Help Guarantee */}
+                {/* Direct Helpline */}
                 <div className="p-4 rounded-2xl bg-orange-50/60 border border-orange-200/70 text-3xs text-slate-600 text-center space-y-1">
-                  <p className="font-bold text-slate-800">
-                    Questions about your order?
-                  </p>
+                  <p className="font-bold text-slate-800">Questions about your order?</p>
                   <p>
                     Call helpline directly at <strong>{business.phone}</strong>
                   </p>
@@ -749,4 +1100,3 @@ export default function CheckoutPage() {
     </div>
   );
 }
-

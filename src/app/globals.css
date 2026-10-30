@@ -10,6 +10,13 @@
 
 :root {
   --primary: #F37820;
+  --toast-offset-bottom: 24px;
+}
+
+@media (max-width: 639px) {
+  :root {
+    --toast-offset-bottom: 88px;
+  }
 }
 
 html {

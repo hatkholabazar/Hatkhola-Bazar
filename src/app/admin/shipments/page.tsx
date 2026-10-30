@@ -18,6 +18,7 @@ import {
   FaHistory,
   FaCopy,
   FaCheck,
+  FaTimes,
 } from "react-icons/fa";
 import { adminApi, IShipment, IPathaoStatus, resolvePathaoStatus } from "@/lib/admin-api";
 
@@ -231,7 +232,7 @@ export default function ShipmentsPage() {
             onClick={() => setActionMessage(null)}
             className="text-slate-400 hover:text-slate-600 text-sm"
           >
-            ✕
+            <FaTimes />
           </button>
         </div>
       )}
@@ -313,17 +314,17 @@ export default function ShipmentsPage() {
 
       {/* Shipments Table */}
       <div className="rounded-2xl bg-white border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px] font-bold">
-                <th className="py-3 px-4">Date & Order #</th>
-                <th className="py-3 px-4">Consignment & Tracking</th>
-                <th className="py-3 px-4">Recipient</th>
-                <th className="py-3 px-4">Package</th>
-                <th className="py-3 px-4">COD / Fee</th>
-                <th className="py-3 px-4">Courier Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+        <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
+          <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
+            <thead className="sticky top-0 z-10 shadow-2xs">
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px] font-bold">
+                <th className="py-3 px-4 whitespace-nowrap">Date & Order #</th>
+                <th className="py-3 px-4 whitespace-nowrap">Consignment & Tracking</th>
+                <th className="py-3 px-4 whitespace-nowrap">Recipient</th>
+                <th className="py-3 px-4 whitespace-nowrap">Package</th>
+                <th className="py-3 px-4 whitespace-nowrap">COD / Fee</th>
+                <th className="py-3 px-4 whitespace-nowrap">Courier Status</th>
+                <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -555,7 +556,7 @@ export default function ShipmentsPage() {
                 onClick={() => setSelectedShipmentForHistory(null)}
                 className="text-slate-400 hover:text-slate-600 text-sm"
               >
-                ✕
+                <FaTimes />
               </button>
             </div>
 

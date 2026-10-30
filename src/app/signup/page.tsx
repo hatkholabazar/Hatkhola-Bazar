@@ -3,22 +3,80 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import {
   FaArrowLeft,
   FaUser,
+  FaEnvelope,
   FaPhoneAlt,
   FaEye,
   FaEyeSlash,
   FaUserPlus,
   FaSignInAlt,
   FaShieldAlt,
+  FaSpinner,
+  FaExclamationCircle,
 } from "react-icons/fa";
 import { siteConfig } from "@/data/siteConfig";
+import { authClient } from "@/lib/auth-client";
 
 export default function SignupPage() {
   const { business } = siteConfig;
+  const router = useRouter();
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+
+    if (password.length < 8) {
+      setErrorMsg("Password must be at least 8 characters long.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setErrorMsg("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { data, error } = await authClient.signUp.email({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        callbackURL: "/profile",
+      });
+
+      if (error) {
+        setErrorMsg(error.message || "Failed to create account. Please try again.");
+      } else {
+        // Store phone number in local storage profile if provided
+        if (phone.trim() && typeof window !== "undefined") {
+          try {
+            const existing = JSON.parse(localStorage.getItem("hatkhola_customer_profile") || "{}");
+            localStorage.setItem("hatkhola_customer_profile", JSON.stringify({ ...existing, phone: phone.trim(), name: name.trim() }));
+          } catch {}
+        }
+        router.push("/profile");
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || "An unexpected error occurred during signup.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/60 via-amber-50/20 to-white text-slate-800 pb-20 pt-6 sm:pt-10">
@@ -61,7 +119,14 @@ export default function SignupPage() {
 
         {/* Wider, Compact Signup Card */}
         <div className="bg-white rounded-3xl border border-orange-200/90 shadow-xl shadow-orange-500/5 p-6 sm:p-8 space-y-6">
-          <form className="space-y-6">
+          {errorMsg && (
+            <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2.5 animate-fade-in">
+              <FaExclamationCircle className="text-red-500 shrink-0 text-base" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSignup} className="space-y-6">
             {/* 2-Column Responsive Inputs Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
               {/* 1. Full Name */}
@@ -73,6 +138,8 @@ export default function SignupPage() {
                   <input
                     type="text"
                     required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Tanvir Ahmed"
                     className="w-full px-4 py-3 pr-10 rounded-2xl border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition bg-slate-50/50 focus:bg-white"
                   />
@@ -80,15 +147,34 @@ export default function SignupPage() {
                 </div>
               </div>
 
-              {/* 2. Mobile Number */}
+              {/* 2. Email Address */}
               <div>
                 <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Mobile Number *
+                  Email Address *
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your.email@example.com"
+                    className="w-full px-4 py-3 pr-10 rounded-2xl border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition bg-slate-50/50 focus:bg-white"
+                  />
+                  <FaEnvelope className="w-3.5 h-3.5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* 3. Mobile Number */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Mobile Number (Optional)
                 </label>
                 <div className="relative">
                   <input
                     type="tel"
-                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
                     placeholder="01XXXXXXXXX"
                     className="w-full px-4 py-3 pr-10 rounded-2xl border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition bg-slate-50/50 focus:bg-white"
                   />
@@ -96,15 +182,18 @@ export default function SignupPage() {
                 </div>
               </div>
 
-              {/* 3. Password */}
+              {/* 4. Password */}
               <div>
                 <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Password *
+                  Password (min 8 chars) *
                 </label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     required
+                    minLength={8}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter password"
                     className="w-full px-4 py-3 pr-11 rounded-2xl border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition bg-slate-50/50 focus:bg-white"
                   />
@@ -123,7 +212,7 @@ export default function SignupPage() {
                 </div>
               </div>
 
-              {/* 4. Confirm Password */}
+              {/* 5. Confirm Password */}
               <div>
                 <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
                   Confirm Password *
@@ -132,6 +221,9 @@ export default function SignupPage() {
                   <input
                     type={showConfirmPassword ? "text" : "password"}
                     required
+                    minLength={8}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter password"
                     className="w-full px-4 py-3 pr-11 rounded-2xl border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition bg-slate-50/50 focus:bg-white"
                   />
@@ -157,11 +249,21 @@ export default function SignupPage() {
 
             {/* Submit Button */}
             <button
-              type="button"
-              className="w-full py-3.5 px-4 rounded-2xl bg-primary hover:bg-primary-hover text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider whitespace-nowrap shadow-md shadow-orange-500/25 transition cursor-pointer transform active:scale-98 flex items-center justify-center gap-2"
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 px-4 rounded-2xl bg-primary hover:bg-primary-hover text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider whitespace-nowrap shadow-md shadow-orange-500/25 transition cursor-pointer transform active:scale-98 flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <FaUserPlus className="w-4 h-4 shrink-0" />
-              <span>Create Account</span>
+              {loading ? (
+                <>
+                  <FaSpinner className="w-4 h-4 animate-spin shrink-0" />
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                <>
+                  <FaUserPlus className="w-4 h-4 shrink-0" />
+                  <span>Create Account</span>
+                </>
+              )}
             </button>
           </form>
 

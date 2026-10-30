@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import AdminSidebar from "@/components/admin/AdminSidebar";
+import AdminGuard from "@/components/admin/AdminGuard";
 
 export const metadata: Metadata = {
   title: "Hatkhola Bazar | Operations Console",
@@ -16,11 +17,13 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="h-screen w-full bg-slate-50 text-slate-800 flex flex-col md:flex-row overflow-hidden antialiased">
-      <AdminSidebar />
-      <main className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
-        {children}
-      </main>
-    </div>
+    <AdminGuard>
+      <div className="h-screen w-full bg-slate-50 text-slate-800 flex flex-col md:flex-row overflow-hidden antialiased">
+        <AdminSidebar />
+        <main className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
+          {children}
+        </main>
+      </div>
+    </AdminGuard>
   );
 }

@@ -30,6 +30,7 @@ interface PathaoLocationPickerProps {
   initialCityId?: number;
   initialZoneId?: number;
   initialAreaId?: number;
+  isPublic?: boolean;
   onChange: (value: PathaoLocationValue) => void;
 }
 
@@ -37,6 +38,7 @@ export default function PathaoLocationPicker({
   initialCityId,
   initialZoneId,
   initialAreaId,
+  isPublic = false,
   onChange,
 }: PathaoLocationPickerProps) {
   const [cities, setCities] = useState<IPathaoCity[]>([]);
@@ -65,11 +67,44 @@ export default function PathaoLocationPicker({
     loadCities();
   }, []);
 
+  const fetchCitiesData = async () => {
+    if (isPublic) {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+      const res = await fetch(`${backendUrl}/api/public/locations/cities`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load cities");
+      return json.cities || [];
+    }
+    return await adminApi.getPathaoCities();
+  };
+
+  const fetchZonesData = async (cityId: number) => {
+    if (isPublic) {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+      const res = await fetch(`${backendUrl}/api/public/locations/cities/${cityId}/zones`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load zones");
+      return json.zones || [];
+    }
+    return await adminApi.getPathaoZones(cityId);
+  };
+
+  const fetchAreasData = async (zoneId: number) => {
+    if (isPublic) {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+      const res = await fetch(`${backendUrl}/api/public/locations/zones/${zoneId}/areas`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load areas");
+      return json.areas || [];
+    }
+    return await adminApi.getPathaoAreas(zoneId);
+  };
+
   const loadCities = async () => {
     setLoadingCities(true);
     setCityError(null);
     try {
-      const data = await adminApi.getPathaoCities();
+      const data = await fetchCitiesData();
       setCities(data);
 
       // If no initial city, check localStorage convenience
@@ -77,7 +112,7 @@ export default function PathaoLocationPicker({
         const savedCityId = localStorage.getItem("hatkhola_last_pathao_city");
         if (savedCityId) {
           const cid = Number(savedCityId);
-          if (data.some((c) => c.id === cid)) {
+          if (data.some((c: IPathaoCity) => c.id === cid)) {
             handleCitySelect(cid, data);
           }
         }
@@ -107,7 +142,7 @@ export default function PathaoLocationPicker({
       }
       setLoadingZones(true);
       try {
-        const zoneData = await adminApi.getPathaoZones(cityId);
+        const zoneData = await fetchZonesData(cityId);
         setZones(zoneData);
 
         // Check localStorage for zone convenience
@@ -115,7 +150,7 @@ export default function PathaoLocationPicker({
           const savedZoneId = localStorage.getItem("hatkhola_last_pathao_zone");
           if (savedZoneId) {
             const zid = Number(savedZoneId);
-            if (zoneData.some((z) => z.id === zid)) {
+            if (zoneData.some((z: IPathaoZone) => z.id === zid)) {
               handleZoneSelect(zid, zoneData, cityObj);
             }
           }
@@ -154,7 +189,7 @@ export default function PathaoLocationPicker({
       }
       setLoadingAreas(true);
       try {
-        const areaData = await adminApi.getPathaoAreas(zoneId);
+        const areaData = await fetchAreasData(zoneId);
         setAreas(areaData);
       } catch (err: any) {
         setAreaError(err.message || "Failed to load areas for this zone");

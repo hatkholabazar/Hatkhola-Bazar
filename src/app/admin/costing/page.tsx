@@ -456,15 +456,15 @@ export default function AdminCostingPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
+          <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase sticky top-0 z-10 shadow-2xs">
                 <tr>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4">Reason / Particulars</th>
-                  <th className="py-3 px-4">Payment Method</th>
-                  <th className="py-3 px-4 text-right">Amount (৳)</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Date</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Category</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Reason / Particulars</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Payment Method</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Amount (৳)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">

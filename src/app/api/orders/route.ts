@@ -40,7 +40,7 @@ export async function POST(request: Request) {
             },
             $setOnInsert: {
               createdAt: new Date(),
-              role: "customer",
+              role: "user",
             },
           },
           { upsert: true }

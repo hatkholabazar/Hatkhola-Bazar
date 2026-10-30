@@ -3,7 +3,8 @@ import { Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/context/CartContext";
 import CartDrawer from "@/components/cart/CartDrawer";
-import ScrollNavbar from "@/components/ui/ScrollNavbar";
+import Navbar from "@/components/layout/Navbar";
+import ToasterProvider from "@/components/providers/ToasterProvider";
 
 const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -84,7 +85,8 @@ export default function RootLayout({
     <html lang="en" className={`scroll-smooth ${bricolage.variable}`}>
       <body className="min-h-full flex flex-col font-sans bg-amber-50/20 text-slate-800 antialiased selection:bg-orange-100 selection:text-orange-900 pb-16 sm:pb-0">
         <CartProvider>
-          <ScrollNavbar />
+          <ToasterProvider />
+          <Navbar />
           {children}
           <CartDrawer />
         </CartProvider>

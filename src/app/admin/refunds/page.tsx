@@ -140,35 +140,35 @@ export default function AdminRefundsPage() {
 
         {/* Refunds Table */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold">
+          <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold sticky top-0 z-10 shadow-2xs">
                 <tr>
-                  <th className="py-3 px-4">Order ID</th>
-                  <th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4">Claimed Reason</th>
-                  <th className="py-3 px-4">Order Value</th>
-                  <th className="py-3 px-4">Photos</th>
-                  <th className="py-3 px-4">Requested Date</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Action</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[110px]">Order ID</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[160px]">Customer</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[240px]">Claimed Reason</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[100px]">Order Value</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[120px]">Photos</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[130px]">Requested Date</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[140px]">Status</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap min-w-[130px]">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {filteredRefunds.length > 0 ? (
                   filteredRefunds.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/80">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
                         {r.orderId}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <p className="font-bold text-slate-900">{r.customerName}</p>
                         <div className="flex items-center gap-1 text-[11px] text-slate-500">
                           <FaWhatsapp className="text-[10px] text-emerald-600" />
                           <span>{r.customerPhone}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-4 max-w-xs">
+                      <td className="py-3 px-4 whitespace-nowrap max-w-xs">
                         <p className="font-semibold text-slate-800 truncate">
                           {r.reason}
                         </p>
@@ -176,52 +176,56 @@ export default function AdminRefundsPage() {
                           {r.notes}
                         </p>
                       </td>
-                      <td className="py-3 px-4 font-bold text-slate-900">
+                      <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
                         {formatTaka(r.orderAmount)}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {r.images.length > 0 ? (
                           <button
+                            type="button"
                             onClick={() => setPreviewImage(r.images[0])}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-[10px] hover:bg-blue-100"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 font-bold text-[11px] hover:bg-blue-100 whitespace-nowrap transition cursor-pointer"
                           >
-                            <FaImage /> {r.images.length} photo(s)
+                            <FaImage className="text-xs" />
+                            <span>{r.images.length} photo(s)</span>
                           </button>
                         ) : (
-                          <span className="text-[10px] text-slate-400">No photos</span>
+                          <span className="text-[11px] text-slate-400 whitespace-nowrap">No photos</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 font-mono">
+                      <td className="py-3 px-4 font-mono whitespace-nowrap">
                         {formatAdminDate(r.requestedAt)}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {r.status === "Pending" && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap">
                             Pending Review
                           </span>
                         )}
                         {r.status === "Approved" && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
                             Refund Approved
                           </span>
                         )}
                         {r.status === "Replaced" && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
                             Replaced
                           </span>
                         )}
                         {r.status === "Rejected" && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">
                             Rejected
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
                         <button
+                          type="button"
                           onClick={() => setSelectedRefund(r)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold whitespace-nowrap transition cursor-pointer"
                         >
-                          <FaEye className="text-[10px]" /> Review Claim
+                          <FaEye className="text-xs text-slate-500" />
+                          <span>Review Claim</span>
                         </button>
                       </td>
                     </tr>
