@@ -423,6 +423,12 @@ export interface ISale {
   totalRevenue: number;
   totalCogs: number;
   grossProfit: number;
+  discountTotal?: number;
+  discountSource?: "loyalty" | "custom" | "manual";
+  voucherId?: string;
+  voucherCode?: string;
+  subtotalBeforeDiscount?: number;
+  lowMarginFlag?: boolean;
   status: "completed" | "voided";
   voidReason?: string;
   voidedAt?: string;

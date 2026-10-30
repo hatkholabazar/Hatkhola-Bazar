@@ -63,11 +63,10 @@ export async function proxy(request: NextRequest) {
 
   // 2. Protection for Admin & Dashboard routes
   if (isAdminRoute) {
-    // If unauthenticated, redirect to admin login
+    // If unauthenticated, redirect to unauthorized
     if (!sessionToken && !adminCookie) {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(loginUrl);
+      const unauthorizedUrl = new URL("/unauthorized", request.url);
+      return NextResponse.redirect(unauthorizedUrl);
     }
 
     // Fast-path: if validated admin cookie is present, allow access
@@ -106,14 +105,13 @@ export async function proxy(request: NextRequest) {
         }
       }
     } catch {
-      // In case of error during verification, conceal admin routes
+      // In case of error during verification
     }
 
-    // Normal customer account attempting to access private admin console:
-    // Conceal endpoint with 404 Not Found to prevent discovery
-    return NextResponse.rewrite(new URL("/not-found", request.url), {
-      status: 404,
-    });
+    // Normal customer account attempting to access private admin/dashboard console:
+    // Redirect to unauthorized page
+    const unauthorizedUrl = new URL("/unauthorized", request.url);
+    return NextResponse.redirect(unauthorizedUrl);
   }
 
   return NextResponse.next();

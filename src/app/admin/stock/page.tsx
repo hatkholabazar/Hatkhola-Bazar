@@ -300,9 +300,9 @@ export default function AdminStockPage() {
         }
       />
 
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
         {/* Reserved vs Free Stock Counters */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
               Total Physical Stock

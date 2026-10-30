@@ -17,10 +17,13 @@ import {
   FaBoxOpen,
   FaCalendarAlt,
   FaInfoCircle,
+  FaCamera,
+  FaSpinner,
 } from "react-icons/fa";
 import AdminHeader from "@/components/admin/AdminHeader";
 import { adminApi, IAdminProduct, IAuditLogItem } from "@/lib/admin-api";
 import { formatTaka, formatGramsToKg, kgToGrams } from "@/config/admin-labels";
+import { uploadToCloudinary } from "@/lib/cloudinary-client";
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<IAdminProduct[]>([]);
@@ -64,6 +67,31 @@ export default function AdminProductsPage() {
 
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingImg, setIsUploadingImg] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("Image size exceeds 10MB limit.");
+      return;
+    }
+
+    setIsUploadingImg(true);
+    setUploadError(null);
+    try {
+      const result = await uploadToCloudinary(file, "product", true);
+      setImageUrl(result.secureUrl);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to upload image to Cloudinary";
+      setUploadError(msg);
+    } finally {
+      setIsUploadingImg(false);
+      e.target.value = "";
+    }
+  };
 
   // Audit Logs Modal
   const [selectedAuditProduct, setSelectedAuditProduct] = useState<IAdminProduct | null>(null);
@@ -341,7 +369,7 @@ export default function AdminProductsPage() {
         }
       />
 
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
         {/* Search */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
           <div className="relative w-full sm:w-80">
@@ -756,15 +784,53 @@ export default function AdminProductsPage() {
                         </div>
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                            Image URL / Path
+                            Image URL / Cloudinary Photo
                           </label>
-                          <input
-                            type="text"
-                            value={imageUrl}
-                            onChange={(e) => setImageUrl(e.target.value)}
-                            placeholder="e.g. /hatkhola-logo.png"
-                            className="w-full text-xs bg-white border border-slate-300 rounded-lg p-2 text-slate-700"
-                          />
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="text"
+                              value={imageUrl}
+                              onChange={(e) => setImageUrl(e.target.value)}
+                              placeholder="e.g. /hatkhola-logo.png or upload photo"
+                              className="w-full text-xs bg-white border border-slate-300 rounded-lg p-2 text-slate-700 font-mono"
+                            />
+                            <label
+                              className={`shrink-0 px-3 py-2 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition ${
+                                isUploadingImg ? "opacity-60 pointer-events-none" : ""
+                              }`}
+                            >
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingImg}
+                                onChange={handleProductImageUpload}
+                                className="hidden"
+                              />
+                              {isUploadingImg ? (
+                                <FaSpinner className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <FaCamera className="w-3.5 h-3.5" />
+                              )}
+                              <span>{isUploadingImg ? "Uploading..." : "Upload"}</span>
+                            </label>
+                          </div>
+                          {uploadError && (
+                            <p className="text-[10px] text-rose-600 mt-1 font-semibold">
+                              {uploadError}
+                            </p>
+                          )}
+                          {imageUrl && (
+                            <div className="mt-2 flex items-center gap-2 p-1.5 bg-orange-50/50 rounded-lg border border-orange-100">
+                              <img
+                                src={imageUrl}
+                                alt="Product preview"
+                                className="w-8 h-8 object-cover rounded border border-slate-200"
+                              />
+                              <span className="text-[10px] text-slate-500 font-mono truncate max-w-[200px]">
+                                {imageUrl}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

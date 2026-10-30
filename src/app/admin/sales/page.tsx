@@ -25,6 +25,7 @@ import {
   ISale,
   IAdminProduct,
 } from "@/lib/admin-api";
+import { loyaltyApi } from "@/lib/loyalty-api";
 import {
   ADMIN_LABELS,
   formatTaka,
@@ -63,6 +64,11 @@ export default function AdminSalesPage() {
   const [selectedOptionLabel, setSelectedOptionLabel] = useState("1 kg Glass Jar");
   const [itemQty, setItemQty] = useState(1);
   const [itemPrice, setItemPrice] = useState(1400);
+
+  // Voucher states
+  const [voucherCodeInput, setVoucherCodeInput] = useState("");
+  const [voucherDiscount, setVoucherDiscount] = useState(0);
+  const [voucherValidationNotice, setVoucherValidationNotice] = useState<string | null>(null);
 
   // Allocation preview
   const [fifoPreview, setFifoPreview] = useState<any[] | null>(null);
@@ -166,7 +172,45 @@ export default function AdminSalesPage() {
   // Financial calculations
   const productSubtotal = itemPrice * itemQty;
   const numCourierCharge = Math.round(Number(courierCharge) || 0);
-  const grandTotalPayable = productSubtotal + numCourierCharge;
+  const grandTotalPayable = Math.max(0, productSubtotal - voucherDiscount) + numCourierCharge;
+
+  // Validate Voucher for Admin Sale
+  const handleValidateAdminVoucher = async () => {
+    if (!voucherCodeInput.trim()) {
+      setVoucherDiscount(0);
+      setVoucherValidationNotice(null);
+      return;
+    }
+    const prod = products.find((p) => p.code === selectedProductCode);
+    if (!prod) return;
+
+    try {
+      const evalRes = await loyaltyApi.validateVoucher({
+        code: voucherCodeInput.trim().toUpperCase(),
+        items: [
+          {
+            productId: prod._id || prod.code,
+            productName: prod.name,
+            price: itemPrice,
+            quantity: itemQty,
+            productCode: prod.code,
+          },
+        ],
+        phone: customerPhone.trim() || undefined,
+      });
+
+      if (evalRes.isValid) {
+        setVoucherDiscount(evalRes.discountAmount);
+        setVoucherValidationNotice(`Valid! Saved ${formatTaka(evalRes.discountAmount)}`);
+      } else {
+        setVoucherDiscount(0);
+        setVoucherValidationNotice(evalRes.error || "Invalid voucher");
+      }
+    } catch (err: any) {
+      setVoucherDiscount(0);
+      setVoucherValidationNotice(err.message || "Failed to validate voucher");
+    }
+  };
 
   // Create Sale Handler
   const handleCreateSale = async (e: React.FormEvent) => {
@@ -203,9 +247,13 @@ export default function AdminSalesPage() {
         ],
         giveawayG: numGiveaway,
         packagingCost: numPkg,
+        voucherCode: voucherCodeInput.trim() || undefined,
       });
 
       setIsAddSaleOpen(false);
+      setVoucherCodeInput("");
+      setVoucherDiscount(0);
+      setVoucherValidationNotice(null);
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
@@ -292,7 +340,7 @@ export default function AdminSalesPage() {
         }
       />
 
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
         {/* Search & Filters */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-96">
@@ -397,8 +445,15 @@ export default function AdminSalesPage() {
                             </div>
                           ))}
                         </td>
-                        <td className="py-3 px-4 font-bold text-slate-800">
-                          {formatTaka(s.totalRevenue)}
+                        <td className="py-3 px-4">
+                          <p className="font-bold text-slate-800">
+                            {formatTaka(s.totalRevenue)}
+                          </p>
+                          {(s.discountTotal || 0) > 0 && (
+                            <span className="text-[10px] font-mono text-rose-600 block">
+                              -{formatTaka(s.discountTotal || 0)} (Voucher)
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-600">
                           {formatTaka(s.courierCharge || 0)}
@@ -406,8 +461,15 @@ export default function AdminSalesPage() {
                         <td className="py-3 px-4 font-bold text-slate-900 text-sm">
                           {formatTaka(totalPayable)}
                         </td>
-                        <td className="py-3 px-4 font-bold text-emerald-600">
-                          +{formatTaka(s.grossProfit)}
+                        <td className="py-3 px-4">
+                          <p className="font-bold text-emerald-600">
+                            +{formatTaka(s.grossProfit)}
+                          </p>
+                          {s.lowMarginFlag && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                              Low Margin (&lt;10%)
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4">
                           {s.status === "completed" ? (
@@ -750,13 +812,48 @@ export default function AdminSalesPage() {
                       </div>
                     </div>
 
+                    {/* Optional Voucher Code */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
+                      <label className="block text-[11px] font-bold text-slate-700">
+                        Apply Voucher Code (Optional)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={voucherCodeInput}
+                          onChange={(e) => setVoucherCodeInput(e.target.value.toUpperCase())}
+                          placeholder="e.g. HB-XXXX-XXXX"
+                          className="flex-1 text-xs bg-white border border-slate-300 rounded-lg p-1.5 font-mono uppercase"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleValidateAdminVoucher}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs cursor-pointer"
+                        >
+                          Check
+                        </button>
+                      </div>
+                      {voucherValidationNotice && (
+                        <p className={`text-[11px] font-semibold ${voucherDiscount > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                          {voucherValidationNotice}
+                        </p>
+                      )}
+                    </div>
+
                     {/* Order Financial Summary Box */}
                     <div className="p-3.5 bg-orange-50/60 rounded-xl border border-orange-200/80 text-xs space-y-1.5">
                       <div className="flex justify-between text-slate-700">
                         <span>Items Subtotal:</span>
                         <span className="font-bold">{formatTaka(productSubtotal)}</span>
                       </div>
+                      {voucherDiscount > 0 && (
+                        <div className="flex justify-between text-emerald-700 font-semibold">
+                          <span>Voucher Discount:</span>
+                          <span className="font-mono font-bold">-{formatTaka(voucherDiscount)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-slate-700">
+                        <span>Courier Delivery Fee:</span>
                         <span>Courier Delivery Fee:</span>
                         <span className="font-mono font-bold text-orange-900">
                           +{formatTaka(numCourierCharge)}

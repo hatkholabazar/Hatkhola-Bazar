@@ -1,9 +1,11 @@
 import Hero from "@/components/sections/Hero";
 import TrustStats from "@/components/sections/TrustStats";
+import LandingLoyaltyBar from "@/components/sections/LandingLoyaltyBar";
 import Products from "@/components/sections/Products";
 import WhyUs from "@/components/sections/WhyUs";
 import Reviews from "@/components/sections/Reviews";
 import HowToOrder from "@/components/sections/HowToOrder";
+import { RewardsSection } from "@/components/sections/RewardsSection";
 import About from "@/components/sections/About";
 import Faq from "@/components/sections/Faq";
 import TrackOrder from "@/components/sections/TrackOrder";
@@ -57,6 +59,9 @@ export default function Home() {
         {/* 2. Trust Stats (#trust) */}
         <TrustStats />
 
+        {/* Hatkhola Rewards Bar */}
+        <LandingLoyaltyBar />
+
         {/* 3. Products (#products) */}
         <Products />
 
@@ -69,7 +74,10 @@ export default function Home() {
         {/* 6. How to Order (#how) */}
         <HowToOrder />
 
-        {/* 7. About (#about) */}
+        {/* 7. Hatkhola Rewards Program (#rewards) */}
+        <RewardsSection />
+
+        {/* 8. About (#about) */}
         <About />
 
         {/* 8. FAQ and Delivery (#faq) */}

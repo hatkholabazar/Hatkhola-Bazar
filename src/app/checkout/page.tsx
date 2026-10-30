@@ -28,6 +28,11 @@ import { toast } from "@/lib/toast";
 import PathaoLocationPicker, {
   PathaoLocationValue,
 } from "@/components/admin/PathaoLocationPicker";
+import { VoucherSection } from "@/components/checkout/VoucherSection";
+import { loyaltyApi, IVoucher, IVoucherEvaluationResult } from "@/lib/loyalty-api";
+import { formatTaka } from "@/config/admin-labels";
+import InvoiceDownloadButton from "@/components/invoice/InvoiceDownloadButton";
+import type { InvoiceOrderData } from "@/components/invoice/OrderInvoicePdf";
 
 function parseOptionGrams(option: string): number {
   const lower = (option || "").toLowerCase();
@@ -98,20 +103,34 @@ export default function CheckoutPage() {
   // Status & Success state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailExistsAlert, setEmailExistsAlert] = useState(false);
-  const [placedOrder, setPlacedOrder] = useState<{
-    orderId: string;
-    total: number;
-    itemsCount: number;
-    area: string;
-    customerName: string;
-    phone: string;
-    paymentMethod: string;
-    deliveryAddress: string;
-  } | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<InvoiceOrderData | null>(null);
+
+  // Voucher state
+  const [appliedVoucher, setAppliedVoucher] = useState<IVoucherEvaluationResult | null>(null);
+  const [customerVouchers, setCustomerVouchers] = useState<IVoucher[]>([]);
 
   // Delivery charge calculation: Inside Ctg = 60 tk, Outside Ctg = 120 tk
   const deliveryCharge = deliveryArea === "ctg" ? 60 : 120;
-  const grandTotal = subtotal + (items.length > 0 ? deliveryCharge : 0);
+  const discountTotal = appliedVoucher ? appliedVoucher.discountAmount : 0;
+  const payableSubtotal = Math.max(0, subtotal - discountTotal);
+  const grandTotal = payableSubtotal + (items.length > 0 ? deliveryCharge : 0);
+
+  // Load customer active vouchers if logged in or phone supplied
+  useEffect(() => {
+    let isCancelled = false;
+    async function loadVouchers() {
+      try {
+        const vList = await loyaltyApi.getCustomerVouchers(phone || undefined, "active");
+        if (!isCancelled) setCustomerVouchers(vList);
+      } catch {
+        // Ignore guest errors
+      }
+    }
+    loadVouchers();
+    return () => {
+      isCancelled = true;
+    };
+  }, [phone, session]);
 
   // Prefill details from session or draft
   useEffect(() => {
@@ -347,6 +366,7 @@ export default function CheckoutPage() {
         qtyG: parseOptionGrams(it.option),
         quantity: it.quantity,
       })),
+      voucherCode: appliedVoucher?.code || undefined,
       paymentMethod:
         paymentMethod === "COD"
           ? "cod"
@@ -380,6 +400,40 @@ export default function CheckoutPage() {
       // Order Success!
       toast.success(`Order #${data.orderId} placed successfully!`, { id: toastId });
 
+      // Prepare complete invoice data before clearing cart
+      const isPreOrderCart =
+        items.some((it: any) => Boolean(it.isPreOrder)) ||
+        Boolean(data.orderId && String(data.orderId).startsWith("PO-"));
+
+      const invoiceData: InvoiceOrderData = {
+        orderId: data.orderId || "HB-ORDER",
+        createdAt: new Date().toISOString(),
+        customerName: name.trim(),
+        customerPhone: normalizedPhone,
+        customerAddress: address.trim(),
+        customerNotes: notes.trim() || undefined,
+        deliveryArea: deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong",
+        deliveryCharge: items.length > 0 ? deliveryCharge : 0,
+        items: items.map((it: any) => ({
+          name: it.name,
+          option: it.option || it.weight || undefined,
+          qtyG: parseOptionGrams(it.option),
+          price: it.price,
+          quantity: it.quantity,
+          isPreOrder: Boolean(it.isPreOrder),
+        })),
+        subtotal,
+        voucherDiscount: discountTotal > 0 ? discountTotal : undefined,
+        voucherCode: appliedVoucher?.code || undefined,
+        grandTotal: data.total || grandTotal,
+        paymentMethod:
+          paymentMethod === "COD"
+            ? "Cash on Delivery"
+            : `${paymentMethod} (TrxID: ${trxId.trim()})`,
+        isPreOrder: isPreOrderCart,
+        preOrderNote: isPreOrderCart ? "Winter Harvest Batch (Mid-December)" : undefined,
+      };
+
       // Clean up cart and draft
       clearCart();
       try {
@@ -400,19 +454,7 @@ export default function CheckoutPage() {
         // Ignore storage errors
       }
 
-      setPlacedOrder({
-        orderId: data.orderId,
-        total: data.total || grandTotal,
-        itemsCount: totalCount,
-        area: deliveryArea === "ctg" ? "Inside Chittagong" : "Outside Chittagong",
-        customerName: name.trim(),
-        phone: normalizedPhone,
-        paymentMethod:
-          paymentMethod === "COD"
-            ? "Cash on Delivery"
-            : `${paymentMethod} (TrxID: ${trxId.trim()})`,
-        deliveryAddress: address.trim(),
-      });
+      setPlacedOrder(invoiceData);
 
       setIsSubmitting(false);
     } catch (orderErr: any) {
@@ -458,9 +500,10 @@ export default function CheckoutPage() {
             <FaArrowLeft className="w-3.5 h-3.5 shrink-0" />
             <span>Continue Shopping</span>
           </Link>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-3xs font-extrabold whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] sm:text-xs font-bold whitespace-nowrap">
             <FaShieldAlt className="w-3 h-3 text-emerald-600 shrink-0" />
-            <span>100% Encrypted & Secure Checkout</span>
+            <span className="hidden sm:inline">100% Encrypted & Secure Checkout</span>
+            <span className="sm:hidden">100% Secure</span>
           </div>
         </div>
 
@@ -493,23 +536,25 @@ export default function CheckoutPage() {
 
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Items Count:</span>
-                <span className="font-bold text-slate-800">{placedOrder.itemsCount} item(s)</span>
+                <span className="font-bold text-slate-800">
+                  {placedOrder.items?.reduce((acc, i) => acc + i.quantity, 0) || placedOrder.items?.length || 1} item(s)
+                </span>
               </div>
 
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Delivery Destination:</span>
-                <span className="font-bold text-slate-800">{placedOrder.area}</span>
+                <span className="font-bold text-slate-800">{placedOrder.deliveryArea || "Chittagong"}</span>
               </div>
 
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Contact Phone:</span>
-                <span className="font-bold text-slate-800">{placedOrder.phone}</span>
+                <span className="font-bold text-slate-800">{placedOrder.customerPhone}</span>
               </div>
 
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Delivery Address:</span>
                 <span className="font-bold text-slate-800 text-right max-w-xs">
-                  {placedOrder.deliveryAddress}
+                  {placedOrder.customerAddress}
                 </span>
               </div>
 
@@ -525,21 +570,27 @@ export default function CheckoutPage() {
 
               <div className="flex justify-between items-baseline pt-4 border-t border-orange-200 text-base sm:text-lg font-black text-slate-900">
                 <span>Total Amount Payable:</span>
-                <span className="text-primary text-xl font-sans">৳ {placedOrder.total}</span>
+                <span className="text-primary text-xl font-sans">৳ {placedOrder.grandTotal}</span>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center items-center">
+              <InvoiceDownloadButton
+                order={placedOrder}
+                variant="primary"
+                size="md"
+                className="w-full sm:w-auto py-3.5 px-6 shadow-md shadow-orange-500/25"
+              />
               <Link
                 href="/account/orders"
-                className="inline-flex items-center justify-center gap-2 py-3.5 px-4 sm:px-6 rounded-xl bg-primary hover:bg-primary-hover text-white font-extrabold text-xs sm:text-sm whitespace-nowrap shadow-md shadow-orange-500/20 transition cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 py-3.5 px-4 sm:px-6 rounded-xl bg-orange-100 hover:bg-orange-200 text-orange-950 font-extrabold text-xs sm:text-sm whitespace-nowrap transition cursor-pointer"
               >
                 <span>View My Orders History</span>
               </Link>
               <Link
                 href="/"
-                className="inline-flex items-center justify-center gap-2 py-3.5 px-4 sm:px-6 rounded-xl bg-orange-100 hover:bg-orange-200 text-orange-950 font-bold text-xs sm:text-sm whitespace-nowrap transition cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 py-3.5 px-4 sm:px-6 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs sm:text-sm whitespace-nowrap transition cursor-pointer"
               >
                 <span>Continue Shopping</span>
               </Link>
@@ -578,20 +629,22 @@ export default function CheckoutPage() {
 
               {/* Logged in User Pill */}
               {session?.user && (
-                <div className="self-start sm:self-auto flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-orange-50 border border-orange-200/90 text-xs text-slate-700 shadow-2xs">
-                  <FaUser className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <span>
-                    Ordering as <strong className="text-slate-900">{session.user.name}</strong>{" "}
-                    <span className="text-slate-400">({session.user.email})</span>
-                  </span>
+                <div className="self-start sm:self-auto flex items-center justify-between gap-3 px-3.5 py-2 rounded-2xl bg-orange-50 border border-orange-200/90 text-xs text-slate-700 shadow-2xs max-w-full">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <FaUser className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <p className="truncate text-xs">
+                      Ordering as <strong className="text-slate-900">{session.user.name}</strong>{" "}
+                      <span className="text-slate-500">({session.user.email})</span>
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={handleSignOut}
                     title="Sign out to order as a different account"
-                    className="ml-1 text-slate-400 hover:text-rose-600 transition flex items-center gap-1 font-bold text-3xs cursor-pointer"
+                    className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-500 hover:text-rose-600 bg-white/70 hover:bg-rose-50 border border-orange-200/60 hover:border-rose-200 text-3xs sm:text-2xs font-extrabold whitespace-nowrap cursor-pointer transition-colors shadow-2xs"
                   >
-                    <FaSignOutAlt className="w-3 h-3" />
-                    <span>Not you?</span>
+                    <FaSignOutAlt className="w-3 h-3 shrink-0" />
+                    <span className="whitespace-nowrap">Not you?</span>
                   </button>
                 </div>
               )}
@@ -1040,12 +1093,36 @@ export default function CheckoutPage() {
                     ))}
                   </div>
 
+                  {/* Voucher Section */}
+                  <div className="pt-2">
+                    <VoucherSection
+                      items={items.map((it) => ({
+                        productId: it.productId || it.id,
+                        productName: it.name,
+                        price: it.price,
+                        quantity: it.quantity,
+                      }))}
+                      phone={phone}
+                      appliedVoucher={appliedVoucher}
+                      onApplyVoucher={setAppliedVoucher}
+                      onRemoveVoucher={() => setAppliedVoucher(null)}
+                      customerVouchers={customerVouchers}
+                    />
+                  </div>
+
                   {/* Price Calculations */}
                   <div className="space-y-2 text-xs text-slate-600 pt-3 border-t border-slate-100">
                     <div className="flex justify-between">
                       <span>Items Subtotal:</span>
-                      <span className="font-bold text-slate-900 font-sans">৳ {subtotal}</span>
+                      <span className="font-bold text-slate-900 font-sans">{formatTaka(subtotal)}</span>
                     </div>
+
+                    {discountTotal > 0 && (
+                      <div className="flex justify-between text-emerald-700 font-semibold">
+                        <span>Voucher Discount:</span>
+                        <span className="font-bold font-mono">-{formatTaka(discountTotal)}</span>
+                      </div>
+                    )}
 
                     <div className="flex justify-between">
                       <span>
@@ -1054,14 +1131,14 @@ export default function CheckoutPage() {
                         ):
                       </span>
                       <span className="font-bold text-slate-900 font-sans">
-                        ৳ {deliveryCharge}
+                        {formatTaka(deliveryCharge)}
                       </span>
                     </div>
 
                     <div className="flex justify-between items-baseline pt-3 border-t border-orange-200 text-slate-900">
                       <span className="text-sm font-extrabold">Total Payable:</span>
                       <span className="text-2xl font-black text-primary font-sans">
-                        ৳ {grandTotal}
+                        {formatTaka(grandTotal)}
                       </span>
                     </div>
                   </div>

@@ -21,13 +21,27 @@ import {
   FaCalendarAlt,
   FaShieldAlt,
   FaCamera,
-  FaSignOutAlt,
+  FaGift,
+  FaTicketAlt,
+  FaCopy,
+  FaCheck,
+  FaCoins,
+  FaHistory,
+  FaSpinner,
 } from "react-icons/fa";
+import { uploadToCloudinary } from "@/lib/cloudinary-client";
 import { siteConfig } from "@/data/siteConfig";
 import { authClient } from "@/lib/auth-client";
+import { loyaltyApi, ILoyaltyAccount, IPublicLoyaltySettings, IVoucher } from "@/lib/loyalty-api";
+import { LoyaltyProgress } from "@/components/loyalty/LoyaltyProgress";
+import { formatTaka } from "@/config/admin-labels";
+import { notify } from "@/lib/notify";
+import InvoiceDownloadButton from "@/components/invoice/InvoiceDownloadButton";
+import type { InvoiceOrderData } from "@/components/invoice/OrderInvoicePdf";
 
 interface CustomerProfileData {
   name: string;
+  email?: string;
   phone: string;
   district: string;
   address: string;
@@ -41,7 +55,7 @@ interface SavedOrder {
   customer: { name: string; phone: string; address: string; notes?: string };
   deliveryArea: string;
   deliveryCharge: number;
-  items: { id: string; name: string; option: string; price: number; quantity: number }[];
+  items: { id: string; name: string; option: string; qtyG?: number; price: number; quantity: number }[];
   subtotal: number;
   grandTotal: number;
   paymentMethod: string;
@@ -58,8 +72,53 @@ interface SavedOrder {
   };
 }
 
+function toInvoiceData(
+  ord: SavedOrder,
+  fallbackProfile?: CustomerProfileData
+): InvoiceOrderData {
+  const isPreOrder = Boolean(
+    ord.orderId?.startsWith("PO-") ||
+      (ord.items || []).some((it: any) => Boolean(it.isPreOrder))
+  );
+
+  return {
+    orderId: ord.orderId || "HB-ORDER",
+    createdAt: ord.createdAt || new Date().toISOString(),
+    customerName: ord.customer?.name || fallbackProfile?.name || "Customer",
+    customerPhone: ord.customer?.phone || fallbackProfile?.phone || "",
+    customerAddress: ord.customer?.address || fallbackProfile?.address || "",
+    customerNotes: ord.customer?.notes,
+    deliveryArea: ord.deliveryArea,
+    deliveryCharge: ord.deliveryCharge,
+    items: (ord.items || []).map((it: any) => ({
+      name: it.name,
+      option: it.option || it.optionLabel || (it.qtyG ? `${it.qtyG}g` : undefined),
+      qtyG: it.qtyG,
+      price: it.price,
+      quantity: it.quantity,
+      isPreOrder,
+    })),
+    subtotal:
+      ord.subtotal ||
+      ord.items?.reduce((a, b) => a + b.price * b.quantity, 0) ||
+      0,
+    grandTotal: ord.grandTotal,
+    paymentMethod:
+      ord.paymentMethod === "COD"
+        ? "Cash on Delivery"
+        : ord.paymentDetails?.trxId
+        ? `${ord.paymentMethod} (TrxID: ${ord.paymentDetails.trxId})`
+        : ord.paymentMethod,
+    isPreOrder,
+    preOrderNote: isPreOrder
+      ? "Winter Harvest Batch (Mid-December)"
+      : undefined,
+  };
+}
+
 const DEFAULT_PROFILE: CustomerProfileData = {
   name: "",
+  email: "",
   phone: "",
   district: "Inside Chittagong",
   address: "",
@@ -72,10 +131,94 @@ export default function CustomerProfilePage() {
   const router = useRouter();
   const { data: session, isPending: sessionPending } = authClient.useSession();
 
-  const [activeTab, setActiveTab] = useState<"orders" | "settings">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "rewards" | "settings">("orders");
   const [profile, setProfile] = useState<CustomerProfileData>(DEFAULT_PROFILE);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [orders, setOrders] = useState<SavedOrder[]>([]);
+
+  // Rewards program states
+  const [loyaltyAccount, setLoyaltyAccount] = useState<ILoyaltyAccount | null>(null);
+  const [loyaltySettings, setLoyaltySettings] = useState<IPublicLoyaltySettings | null>(null);
+  const [customerVouchers, setCustomerVouchers] = useState<IVoucher[]>([]);
+  const [voucherFilterTab, setVoucherFilterTab] = useState<"active" | "used" | "expired">("active");
+  const [copiedVoucherCode, setCopiedVoucherCode] = useState<string | null>(null);
+  const [loadingLoyalty, setLoadingLoyalty] = useState(false);
+  const [hasUnlinkedPastPurchases, setHasUnlinkedPastPurchases] = useState(false);
+  const [isLinkingAccount, setIsLinkingAccount] = useState(false);
+
+  // Read URL tab parameter on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const tab = new URLSearchParams(window.location.search).get("tab");
+      if (tab === "rewards" || tab === "orders" || tab === "settings") {
+        setActiveTab(tab);
+      }
+    }
+  }, []);
+
+  // Fetch loyalty account and vouchers
+  useEffect(() => {
+    if (!session?.user) return;
+    const fetchLoyalty = async () => {
+      setLoadingLoyalty(true);
+      try {
+        const token = (session as any)?.session?.token;
+        const phoneToUse =
+          profile.phone ||
+          orders[0]?.customer?.phone ||
+          (orders[0] as any)?.customerPhone;
+        const [accRes, vouchersRes] = await Promise.allSettled([
+          loyaltyApi.getCustomerAccount(phoneToUse || undefined, token),
+          loyaltyApi.getCustomerVouchers(phoneToUse || undefined, undefined, token),
+        ]);
+        if (accRes.status === "fulfilled") {
+          setLoyaltyAccount(accRes.value.account);
+          setLoyaltySettings(accRes.value.settings);
+          if ((accRes.value as any).unlinkedPastPurchases) {
+            setHasUnlinkedPastPurchases(true);
+          }
+        }
+        if (vouchersRes.status === "fulfilled") {
+          setCustomerVouchers(vouchersRes.value || []);
+        }
+      } catch {
+        // Silently handle if offline or disabled
+      } finally {
+        setLoadingLoyalty(false);
+      }
+    };
+    fetchLoyalty();
+  }, [session, profile.phone, orders.length, orders[0]?.customer?.phone]);
+
+  const handleLinkPastPurchases = async () => {
+    const phoneToLink = profile.phone || loyaltyAccount?.phone;
+    if (!phoneToLink) {
+      notify.error("Phone number is required to link past purchases");
+      return;
+    }
+    setIsLinkingAccount(true);
+    try {
+      await loyaltyApi.linkPastAccount(phoneToLink);
+      notify.success("Past purchases successfully linked to your account!");
+      setHasUnlinkedPastPurchases(false);
+      // Refresh loyalty info
+      const acc = await loyaltyApi.getCustomerAccount(phoneToLink);
+      setLoyaltyAccount(acc.account);
+      const vouchers = await loyaltyApi.getCustomerVouchers(phoneToLink);
+      setCustomerVouchers(vouchers || []);
+    } catch (err: any) {
+      notify.error(err.message || "Failed to link past purchases");
+    } finally {
+      setIsLinkingAccount(false);
+    }
+  };
+
+  const handleCopyVoucher = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedVoucherCode(code);
+    notify.success(`Voucher code ${code} copied to clipboard`);
+    setTimeout(() => setCopiedVoucherCode(null), 2500);
+  };
 
   // Route protection: redirect unauthenticated visitors
   useEffect(() => {
@@ -101,29 +244,34 @@ export default function CustomerProfilePage() {
   const [refundNotes, setRefundNotes] = useState("");
   const [refundImages, setRefundImages] = useState<string[]>([]);
   const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
+  const [isUploadingRefundImg, setIsUploadingRefundImg] = useState(false);
   const [refundSuccessMsg, setRefundSuccessMsg] = useState("");
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const remainingSlots = 4 - refundImages.length;
     const filesToProcess = Array.from(files).slice(0, remainingSlots);
 
-    filesToProcess.forEach((file) => {
-      if (file.size > 5 * 1024 * 1024) {
-        alert("File size exceeds 5MB limit.");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === "string") {
-          setRefundImages((prev) => [...prev, reader.result as string]);
+    setIsUploadingRefundImg(true);
+    try {
+      for (const file of filesToProcess) {
+        if (file.size > 5 * 1024 * 1024) {
+          notify.error("File size exceeds 5MB limit.");
+          continue;
         }
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = "";
+        const result = await uploadToCloudinary(file, "refund", false);
+        setRefundImages((prev) => [...prev, result.secureUrl]);
+      }
+      notify.success("Damage proof photo uploaded to Cloudinary");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to upload image to Cloudinary";
+      notify.error(message);
+    } finally {
+      setIsUploadingRefundImg(false);
+      e.target.value = "";
+    }
   };
 
   const handleRemoveImage = (indexToRemove: number) => {
@@ -140,11 +288,13 @@ export default function CustomerProfilePage() {
           ...DEFAULT_PROFILE,
           ...parsed,
           name: session?.user?.name || parsed.name || "",
+          email: session?.user?.email || parsed.email || "",
         }));
-      } else if (session?.user?.name) {
+      } else if (session?.user?.name || session?.user?.email) {
         setProfile((prev) => ({
           ...DEFAULT_PROFILE,
-          name: session.user.name,
+          name: session.user.name || "",
+          email: session.user.email || "",
         }));
       }
     } catch {
@@ -182,22 +332,32 @@ export default function CustomerProfilePage() {
               orderId: o.orderNo || o.id,
               createdAt: o.createdAt,
               customer: {
-                name: session?.user?.name || profile.name || "Customer",
-                phone: profile.phone || "",
-                address: profile.address || "",
+                name: o.customer?.name || session?.user?.name || profile.name || "Customer",
+                phone: o.customer?.phone || profile.phone || "",
+                address: o.customer?.address || profile.address || "",
+                notes: o.customer?.notes,
               },
-              deliveryArea: "Standard Courier",
-              deliveryCharge: 60,
-              items: (o.items || []).map((it: any) => ({
-                id: it.productName,
-                name: it.productName,
-                option: it.optionLabel,
-                price: it.sellingPrice,
-                quantity: Math.max(1, Math.round((it.qtyG || 1000) / 1000)),
-              })),
-              subtotal: o.totalAmount,
-              grandTotal: o.totalAmount,
+              deliveryArea: o.deliveryArea || "Standard Courier",
+              deliveryCharge: o.deliveryCharge !== undefined ? o.deliveryCharge : 60,
+              items: (o.items || []).map((it: any) => {
+                const itemPrice = it.price || it.sellingPrice || 0;
+                const derivedQty = it.lineTotal && itemPrice > 0 ? Math.round(it.lineTotal / itemPrice) : 1;
+                const finalQuantity = it.quantity && it.quantity > 1 ? it.quantity : (derivedQty > 1 ? derivedQty : (it.quantity || 1));
+                const finalOption = it.optionLabel || it.option || (it.qtyG ? `${it.qtyG}g` : "Standard Pack");
+
+                return {
+                  id: it.productId || it.productName || it.name,
+                  name: it.productName || it.name,
+                  option: finalOption,
+                  qtyG: it.qtyG,
+                  price: itemPrice,
+                  quantity: finalQuantity,
+                };
+              }),
+              subtotal: o.subtotal || o.totalAmount,
+              grandTotal: o.grandTotal || o.totalAmount,
               paymentMethod: o.paymentMethod || "COD",
+              paymentDetails: o.paymentDetails,
               status: o.statusLabel?.en || o.status || "Processing",
             }));
             setOrders(mapped);
@@ -332,30 +492,6 @@ export default function CustomerProfilePage() {
             >
               Refund Policy
             </Link>
-            <button
-              type="button"
-              onClick={async () => {
-                document.cookie =
-                  "hatkhola_admin_token=; path=/; max-age=0; SameSite=Lax";
-                try {
-                  localStorage.removeItem("hatkhola_admin_token");
-                } catch {
-                  // Ignore storage errors
-                }
-                await authClient.signOut({
-                  fetchOptions: {
-                    onSuccess: () => {
-                      router.push("/login");
-                      router.refresh();
-                    },
-                  },
-                });
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 text-xs font-bold text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-            >
-              <FaSignOutAlt className="w-3.5 h-3.5" />
-              <span>Sign Out</span>
-            </button>
           </div>
         </div>
         {/* Profile Header */}
@@ -366,11 +502,11 @@ export default function CustomerProfilePage() {
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
             {profile.name ? `Welcome, ${profile.name}` : "Customer Dashboard"}
           </h1>
-          <div className="flex items-center justify-center gap-2 mt-2">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 uppercase tracking-wide">
-              Role: {session?.user?.role || "user"}
-            </span>
-          </div>
+          {(session?.user?.email || profile.email) && (
+            <p className="text-xs sm:text-sm font-semibold text-slate-500 mt-1">
+              {session?.user?.email || profile.email}
+            </p>
+          )}
           {session?.user?.role === "admin" && (
             <div className="mt-3">
               <Link
@@ -386,22 +522,52 @@ export default function CustomerProfilePage() {
           </p>
         </div>
 
+        {/* Unlinked Past Purchases Alert Banner */}
+        {hasUnlinkedPastPurchases && loyaltyAccount && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200/90 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                <FaGift className="w-5 h-5 text-amber-700" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-bold text-amber-950">
+                  We found past purchases of {formatTaka(loyaltyAccount.lifetimeEligibleSpend)} under your phone number ({loyaltyAccount.phone}).
+                </p>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Link them to your profile now to see your rewards progress and unlock loyalty vouchers.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleLinkPastPurchases}
+              disabled={isLinkingAccount}
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs whitespace-nowrap transition cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
+            >
+              {isLinkingAccount ? "Linking..." : "Link Past Purchases"}
+            </button>
+          </div>
+        )}
+
         {/* Tab Switcher */}
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex p-1.5 rounded-2xl bg-orange-100/70 border border-orange-200">
+        <div className="flex justify-center mb-8 w-full">
+          <div className="w-full max-w-md sm:max-w-lg p-1 sm:p-1.5 rounded-2xl bg-orange-100/70 border border-orange-200 grid grid-cols-3 gap-1">
             <button
               type="button"
               onClick={() => setActiveTab("orders")}
-              className={`py-2 px-3.5 sm:px-5 rounded-xl text-xs sm:text-sm font-extrabold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 sm:gap-2 ${
+              className={`py-2 px-1 sm:px-4 rounded-xl text-xs sm:text-sm font-extrabold whitespace-nowrap transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
                 activeTab === "orders"
                   ? "bg-white text-primary shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <FaBoxOpen className="w-4 h-4 shrink-0" />
-              <span>Order History</span>
+              <FaBoxOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span>
+                <span className="hidden sm:inline">Order History</span>
+                <span className="sm:hidden">Orders</span>
+              </span>
               {orders.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-primary text-white text-3xs font-mono font-bold">
+                <span className="px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full bg-primary text-white text-[9px] sm:text-3xs font-mono font-bold shrink-0">
                   {orders.length}
                 </span>
               )}
@@ -409,15 +575,53 @@ export default function CustomerProfilePage() {
 
             <button
               type="button"
+              onClick={() => setActiveTab("rewards")}
+              className={`py-2 px-1 sm:px-4 rounded-xl text-xs sm:text-sm font-extrabold whitespace-nowrap transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === "rewards"
+                  ? "bg-white text-primary shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <FaGift className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-primary" />
+              <span>
+                <span className="hidden sm:inline">My Rewards</span>
+                <span className="sm:hidden">Rewards</span>
+              </span>
+              {customerVouchers.filter((v) => {
+                if (v.status !== "active") return false;
+                if (v.expiresAt && new Date(v.expiresAt) <= new Date()) return false;
+                if (v.usageLimitTotal !== null && v.usageLimitTotal !== undefined) {
+                  if ((v.usedCount || 0) + (v.reservedCount || 0) >= v.usageLimitTotal) return false;
+                }
+                return true;
+              }).length > 0 && (
+                <span className="px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full bg-emerald-600 text-white text-[9px] sm:text-3xs font-mono font-bold shrink-0">
+                  {customerVouchers.filter((v) => {
+                    if (v.status !== "active") return false;
+                    if (v.expiresAt && new Date(v.expiresAt) <= new Date()) return false;
+                    if (v.usageLimitTotal !== null && v.usageLimitTotal !== undefined) {
+                      if ((v.usedCount || 0) + (v.reservedCount || 0) >= v.usageLimitTotal) return false;
+                    }
+                    return true;
+                  }).length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab("settings")}
-              className={`py-2 px-3.5 sm:px-5 rounded-xl text-xs sm:text-sm font-extrabold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 sm:gap-2 ${
+              className={`py-2 px-1 sm:px-4 rounded-xl text-xs sm:text-sm font-extrabold whitespace-nowrap transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
                 activeTab === "settings"
                   ? "bg-white text-primary shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <FaMapMarkerAlt className="w-4 h-4 shrink-0" />
-              <span>Saved Address</span>
+              <FaMapMarkerAlt className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span>
+                <span className="hidden sm:inline">Saved Address</span>
+                <span className="sm:hidden">Address</span>
+              </span>
             </button>
           </div>
         </div>
@@ -534,7 +738,14 @@ export default function CustomerProfilePage() {
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* INVOICE DOWNLOAD BUTTON */}
+                        <InvoiceDownloadButton
+                          order={toInvoiceData(ord, profile)}
+                          variant="secondary"
+                          size="sm"
+                        />
+
                         {/* DETAILS BUTTON */}
                         <button
                           type="button"
@@ -570,7 +781,269 @@ export default function CustomerProfilePage() {
           </div>
         )}
 
-        {/* TAB 2: SAVED ADDRESS & SETTINGS */}
+        {/* TAB 2: HATKHOLA REWARDS PROGRAM & VOUCHERS */}
+        {activeTab === "rewards" && (
+          <div className="space-y-6">
+            {/* Live Progress Bar Component */}
+            <LoyaltyProgress account={loyaltyAccount} settings={loyaltySettings} />
+
+            {/* Vouchers Wallet Section */}
+            <div className="bg-white rounded-3xl border border-orange-200/80 shadow-xs p-6 sm:p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                    <FaTicketAlt className="text-primary w-4 h-4" />
+                    <span>My Vouchers Wallet</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Your earned loyalty rewards and special promotional discount vouchers.
+                  </p>
+                </div>
+
+              {/* Sub-tab filter: Active / Used / Expired */}
+              {(() => {
+                const isVoucherActive = (v: IVoucher) => {
+                  if (v.status !== "active") return false;
+                  if (v.expiresAt && new Date(v.expiresAt) <= new Date()) return false;
+                  if (v.usageLimitTotal !== null && v.usageLimitTotal !== undefined) {
+                    if ((v.usedCount || 0) + (v.reservedCount || 0) >= v.usageLimitTotal) {
+                      return false;
+                    }
+                  }
+                  return true;
+                };
+
+                const isVoucherUsed = (v: IVoucher) => {
+                  if (isVoucherActive(v)) return false;
+                  return (
+                    v.status === "redeemed" ||
+                    (v.usageLimitTotal !== null &&
+                      v.usageLimitTotal !== undefined &&
+                      (v.usedCount || 0) + (v.reservedCount || 0) >= v.usageLimitTotal)
+                  );
+                };
+
+                const isVoucherExpired = (v: IVoucher) => {
+                  if (isVoucherActive(v)) return false;
+                  if (isVoucherUsed(v)) return false;
+                  return true;
+                };
+
+                const activeCount = customerVouchers.filter(isVoucherActive).length;
+                const usedCount = customerVouchers.filter(isVoucherUsed).length;
+                const expiredCount = customerVouchers.filter(isVoucherExpired).length;
+
+                return (
+                  <div className="inline-flex p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setVoucherFilterTab("active")}
+                      className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                        voucherFilterTab === "active"
+                          ? "bg-white text-slate-900 shadow-2xs font-extrabold"
+                          : "text-slate-500 hover:text-slate-900"
+                      }`}
+                    >
+                      Active ({activeCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVoucherFilterTab("used")}
+                      className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                        voucherFilterTab === "used"
+                          ? "bg-white text-slate-900 shadow-2xs font-extrabold"
+                          : "text-slate-500 hover:text-slate-900"
+                      }`}
+                    >
+                      Used ({usedCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVoucherFilterTab("expired")}
+                      className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                        voucherFilterTab === "expired"
+                          ? "bg-white text-slate-900 shadow-2xs font-extrabold"
+                          : "text-slate-500 hover:text-slate-900"
+                      }`}
+                    >
+                      Expired ({expiredCount})
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Vouchers Grid */}
+            {(() => {
+              const isVoucherActive = (v: IVoucher) => {
+                if (v.status !== "active") return false;
+                if (v.expiresAt && new Date(v.expiresAt) <= new Date()) return false;
+                if (v.usageLimitTotal !== null && v.usageLimitTotal !== undefined) {
+                  if ((v.usedCount || 0) + (v.reservedCount || 0) >= v.usageLimitTotal) {
+                    return false;
+                  }
+                }
+                return true;
+              };
+
+              const isVoucherUsed = (v: IVoucher) => {
+                if (isVoucherActive(v)) return false;
+                return (
+                  v.status === "redeemed" ||
+                  (v.usageLimitTotal !== null &&
+                    v.usageLimitTotal !== undefined &&
+                    (v.usedCount || 0) + (v.reservedCount || 0) >= v.usageLimitTotal)
+                );
+              };
+
+              const filtered = customerVouchers.filter((v) => {
+                if (voucherFilterTab === "active") return isVoucherActive(v);
+                if (voucherFilterTab === "used") return isVoucherUsed(v);
+                return !isVoucherActive(v) && !isVoucherUsed(v);
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="text-center py-12 px-4 rounded-2xl bg-orange-50/40 border border-dashed border-orange-200">
+                    <div className="w-12 h-12 rounded-2xl bg-orange-100 text-primary flex items-center justify-center mx-auto mb-3">
+                      <FaTicketAlt className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-800">
+                      {voucherFilterTab === "active"
+                        ? "No active vouchers right now"
+                        : `No ${voucherFilterTab} vouchers`}
+                    </p>
+                    <p className="text-[11px] text-slate-500 max-w-sm mx-auto mt-1">
+                      {voucherFilterTab === "active"
+                        ? `Delivered spend toward your target of ${formatTaka(loyaltySettings?.targetAmount || 4000)} automatically generates a ${formatTaka(loyaltySettings?.rewardAmount || 250)} voucher.`
+                        : "Your past redeemed and expired vouchers will appear here for your records."}
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filtered.map((v) => {
+                    const active = isVoucherActive(v);
+                    const used = isVoucherUsed(v);
+
+                    return (
+                      <div
+                        key={v._id}
+                        className={`rounded-2xl p-4 sm:p-5 border transition flex flex-col justify-between gap-4 ${
+                          active
+                            ? "bg-linear-to-br from-white to-orange-50/40 border-orange-200/90 shadow-2xs hover:border-orange-300"
+                            : "bg-slate-50/80 border-slate-200 opacity-80"
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-200">
+                              {v.source === "loyalty" ? "Loyalty Reward" : "Special Voucher"}
+                            </span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                active
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : used
+                                  ? "bg-slate-100 text-slate-700 border border-slate-200"
+                                  : "bg-rose-50 text-rose-700 border border-rose-200"
+                              }`}
+                            >
+                              {active ? "Active" : used ? "Used" : "Expired"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-xl sm:text-2xl font-mono font-black text-slate-900">
+                              {v.discountType === "fixed" ? formatTaka(v.value) : `${v.value}%`}{" "}
+                              OFF
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-slate-600 space-y-0.5">
+                            {v.minOrderAmount > 0 && (
+                              <p>
+                                Min order:{" "}
+                                <strong className="text-slate-800">{formatTaka(v.minOrderAmount)}</strong>
+                              </p>
+                            )}
+                            <p className="text-[11px] text-slate-500">
+                              Valid until:{" "}
+                              <strong className="text-slate-700">
+                                {new Date(v.expiresAt).toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </strong>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Code Pill & Action Button */}
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <span className="px-3 py-1.5 rounded-xl bg-slate-100 font-mono font-black text-xs sm:text-sm text-slate-900 tracking-wider select-all border border-slate-200">
+                              {v.code}
+                            </span>
+                            {active ? (
+                              <button
+                                type="button"
+                                onClick={() => handleCopyVoucher(v.code)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-100/80 hover:bg-orange-200 text-orange-950 text-xs font-bold transition cursor-pointer"
+                              >
+                                {copiedVoucherCode === v.code ? (
+                                  <>
+                                    <FaCheck className="w-3 h-3 text-emerald-600" />
+                                    <span>Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <FaCopy className="w-3 h-3 text-primary" />
+                                    <span>Copy Code</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <span className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                                {used ? "Already Used" : "Expired"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* How the Program Works Info Box */}
+            <div className="rounded-2xl p-5 sm:p-6 bg-orange-50/60 border border-orange-200 text-xs text-slate-700 space-y-3">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <FaCoins className="w-4 h-4 text-amber-500" />
+                <span>How Hatkhola Rewards Works</span>
+              </h3>
+              <ul className="space-y-2 list-disc list-inside text-slate-600 leading-relaxed font-medium">
+                <li>
+                  Progress builds exclusively upon successful delivery of genuine handcrafted goods.
+                </li>
+                <li>
+                  Every {formatTaka(loyaltySettings?.targetAmount || 4000)} of delivered purchases issues a {formatTaka(loyaltySettings?.rewardAmount || 250)} voucher.
+                </li>
+                <li>
+                  <strong>Zero Lost Taka Rule:</strong> Any purchase amount above the target seamlessly carries over into your next progress bar.
+                </li>
+                <li>
+                  A standard 3-day verification hold after courier delivery protects legitimate customers.
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: SAVED ADDRESS & SETTINGS */}
         {activeTab === "settings" && (
           <div className="bg-white rounded-3xl border border-orange-200/80 shadow-md p-6 sm:p-8">
             <h2 className="text-sm font-black uppercase tracking-wider text-slate-800 mb-4 pb-2 border-b border-orange-100 flex items-center gap-2">
@@ -595,16 +1068,34 @@ export default function CustomerProfilePage() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Phone Number
+                    Email Address
                   </label>
                   <input
-                    type="tel"
-                    value={profile.phone}
-                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                    placeholder="e.g. +880 18XXXXXXXX"
-                    className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-slate-900"
+                    type="email"
+                    value={session?.user?.email || profile.email || ""}
+                    disabled={!!session?.user?.email}
+                    onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                    placeholder="e.g. customer@example.com"
+                    className={`w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 ${
+                      session?.user?.email
+                        ? "bg-slate-50 text-slate-500 cursor-not-allowed"
+                        : "bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary"
+                    }`}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={profile.phone}
+                  onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                  placeholder="e.g. +880 18XXXXXXXX"
+                  className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-slate-900"
+                />
               </div>
 
               <div>
@@ -843,11 +1334,17 @@ export default function CustomerProfilePage() {
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <InvoiceDownloadButton
+                order={toInvoiceData(selectedOrderDetails, profile)}
+                variant="primary"
+                size="sm"
+                className="w-full sm:w-auto"
+              />
               <button
                 type="button"
                 onClick={() => setSelectedOrderDetails(null)}
-                className="py-2 px-5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs whitespace-nowrap transition cursor-pointer"
+                className="w-full sm:w-auto py-2 px-5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs whitespace-nowrap transition cursor-pointer"
               >
                 Close Details
               </button>
@@ -993,19 +1490,28 @@ export default function CustomerProfilePage() {
 
                   {/* Upload Drop Area */}
                   {refundImages.length < 4 && (
-                    <label className="border-2 border-dashed border-orange-200 hover:border-primary/80 hover:bg-orange-50/40 rounded-2xl p-3 sm:p-4 flex flex-col items-center justify-center text-center cursor-pointer transition group">
+                    <label
+                      className={`border-2 border-dashed border-orange-200 hover:border-primary/80 hover:bg-orange-50/40 rounded-2xl p-3 sm:p-4 flex flex-col items-center justify-center text-center cursor-pointer transition group ${
+                        isUploadingRefundImg ? "opacity-60 pointer-events-none" : ""
+                      }`}
+                    >
                       <input
                         type="file"
                         accept="image/*"
                         multiple
+                        disabled={isUploadingRefundImg}
                         onChange={handleImageUpload}
                         className="hidden"
                       />
                       <div className="w-8 h-8 rounded-xl bg-orange-100 text-primary flex items-center justify-center mb-1 group-hover:scale-105 transition-transform">
-                        <FaCamera className="w-4 h-4" />
+                        {isUploadingRefundImg ? (
+                          <FaSpinner className="w-4 h-4 animate-spin text-primary" />
+                        ) : (
+                          <FaCamera className="w-4 h-4" />
+                        )}
                       </div>
                       <span className="text-xs font-bold text-slate-700 group-hover:text-primary transition-colors">
-                        Click to upload product picture
+                        {isUploadingRefundImg ? "Uploading to Cloudinary..." : "Click to upload product picture"}
                       </span>
                       <span className="text-3xs text-slate-400 mt-0.5">
                         Upload clear photos of broken seal, leak, or defect (max 5MB)

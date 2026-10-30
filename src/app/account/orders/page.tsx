@@ -17,6 +17,8 @@ import {
 } from "react-icons/fa";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "@/lib/toast";
+import InvoiceDownloadButton from "@/components/invoice/InvoiceDownloadButton";
+import type { InvoiceOrderData } from "@/components/invoice/OrderInvoicePdf";
 
 interface CustomerOrder {
   id: string;
@@ -28,6 +30,8 @@ interface CustomerOrder {
     optionLabel: string;
     qtyG: number;
     sellingPrice: number;
+    quantity?: number;
+    price?: number;
   }[];
   totalAmount: number;
   paymentMethod: string;
@@ -35,6 +39,32 @@ interface CustomerOrder {
   statusLabel?: {
     en: string;
     bn: string;
+  };
+}
+
+function mapOrderToInvoice(ord: CustomerOrder, sessionUser?: any): InvoiceOrderData {
+  return {
+    orderId: ord.orderNo || ord.id,
+    createdAt: ord.createdAt,
+    customerName: sessionUser?.name || "Valued Customer",
+    customerPhone: sessionUser?.phone || "",
+    customerAddress: sessionUser?.address || "Registered Address",
+    items: (ord.items || []).map((it) => ({
+      name: it.productName,
+      option: it.optionLabel || (it.qtyG ? `${it.qtyG}g` : undefined),
+      qtyG: it.qtyG,
+      price: it.price || it.sellingPrice,
+      quantity: it.quantity || 1,
+      isPreOrder: ord.orderType === "preorder",
+    })),
+    subtotal: ord.totalAmount,
+    grandTotal: ord.totalAmount,
+    paymentMethod: ord.paymentMethod,
+    isPreOrder: ord.orderType === "preorder",
+    preOrderNote:
+      ord.orderType === "preorder"
+        ? "Winter Harvest Batch (Mid-December)"
+        : undefined,
   };
 }
 
@@ -106,12 +136,6 @@ export default function AccountOrdersPage() {
             <FaArrowLeft className="w-3.5 h-3.5 shrink-0" />
             <span>Back to Home</span>
           </Link>
-          <span className="text-xs text-slate-400 font-medium flex items-center gap-2">
-            <span>Account: <strong className="text-slate-700">{session?.user?.email}</strong></span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider bg-orange-100 text-orange-800">
-              {session?.user?.role || "user"}
-            </span>
-          </span>
         </div>
 
         {/* Page Header */}
@@ -230,22 +254,34 @@ export default function AccountOrdersPage() {
                         {it.optionLabel && (
                           <span className="text-slate-500"> ({it.optionLabel})</span>
                         )}
+                        {(it.quantity || 1) > 1 && (
+                          <span className="text-primary font-bold"> × {it.quantity}</span>
+                        )}
                       </span>
                       <span className="font-mono font-semibold">
-                        ৳ {it.sellingPrice?.toLocaleString()}
+                        ৳ {((it.price || it.sellingPrice || 0) * (it.quantity || 1))?.toLocaleString()}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                {/* Footer Total */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
-                  <span className="text-slate-500 uppercase text-[10px] tracking-wider">
-                    Payment Method: {ord.paymentMethod}
-                  </span>
-                  <div className="text-sm text-slate-900">
-                    Total: <span className="font-mono text-primary">৳ {ord.totalAmount?.toLocaleString()}</span>
+                {/* Footer Total & Actions */}
+                <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-bold">
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-500 uppercase text-[10px] tracking-wider">
+                      Payment: {ord.paymentMethod}
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <div className="text-sm text-slate-900">
+                      Total: <span className="font-mono text-primary">৳ {ord.totalAmount?.toLocaleString()}</span>
+                    </div>
                   </div>
+
+                  <InvoiceDownloadButton
+                    order={mapOrderToInvoice(ord, session?.user)}
+                    variant="secondary"
+                    size="sm"
+                  />
                 </div>
               </div>
             ))}

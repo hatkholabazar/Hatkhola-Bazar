@@ -30,7 +30,7 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (!isPending && hasToken !== null && !isUserAdmin) {
-      router.push("/login?redirect=/admin");
+      router.push("/unauthorized");
     }
   }, [isPending, hasToken, isUserAdmin, router]);
 

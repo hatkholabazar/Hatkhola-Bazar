@@ -10,8 +10,6 @@ import {
   FaShoppingBag,
   FaUser,
   FaPhoneAlt,
-  FaBoxOpen,
-  FaTachometerAlt,
 } from "react-icons/fa";
 import { FiLogOut } from "react-icons/fi";
 import { useCart } from "@/context/CartContext";
@@ -29,7 +27,14 @@ export default function Navbar() {
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [hasAdminToken, setHasAdminToken] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setHasAdminToken(!!localStorage.getItem("hatkhola_admin_token"));
+    }
+  }, []);
 
   // Close menu on route change
   useEffect(() => {
@@ -106,13 +111,6 @@ export default function Navbar() {
   const userName = session?.user?.name || "Customer";
   const firstName = userName.split(" ")[0] || userName;
 
-  const [hasAdminToken, setHasAdminToken] = useState(false);
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setHasAdminToken(!!localStorage.getItem("hatkhola_admin_token"));
-    }
-  }, []);
-
   const userRole = session?.user?.role || "user";
   const isAdmin =
     (isLoggedIn && (userRole === "admin" || (session?.user as any)?.isAdmin === true)) ||
@@ -165,25 +163,23 @@ export default function Navbar() {
             {isLoggedIn && (
               <Link
                 href="/account/orders"
-                className={`hover:text-primary transition py-1 flex items-center gap-1.5 ${
+                className={`hover:text-primary transition py-1 ${
                   pathname === "/account/orders" ? "text-primary" : ""
                 }`}
               >
-                <FaBoxOpen className="text-primary w-3.5 h-3.5" />
-                <span>My Orders</span>
+                My Orders
               </Link>
             )}
             {isAdmin && (
               <Link
                 href="/admin"
-                className={`hover:text-primary transition py-1 flex items-center gap-1.5 ${
+                className={`hover:text-primary transition py-1 ${
                   pathname?.startsWith("/admin")
                     ? "text-primary"
                     : "text-orange-950 font-black"
                 }`}
               >
-                <FaTachometerAlt className="text-primary w-3.5 h-3.5" />
-                <span>Dashboard</span>
+                Dashboard
               </Link>
             )}
           </nav>
@@ -374,18 +370,16 @@ export default function Navbar() {
                     <Link
                       href="/profile"
                       onClick={() => setIsMenuOpen(false)}
-                      className="p-2.5 rounded-xl hover:bg-orange-50 hover:text-primary transition flex items-center gap-2"
+                      className="p-2.5 rounded-xl hover:bg-orange-50 hover:text-primary transition"
                     >
-                      <FaUser className="text-primary w-4 h-4" />
-                      <span>My Profile ({firstName})</span>
+                      My Profile ({firstName})
                     </Link>
                     <Link
                       href="/account/orders"
                       onClick={() => setIsMenuOpen(false)}
-                      className="p-2.5 rounded-xl hover:bg-orange-50 hover:text-primary transition flex items-center gap-2"
+                      className="p-2.5 rounded-xl hover:bg-orange-50 hover:text-primary transition"
                     >
-                      <FaBoxOpen className="text-primary w-4 h-4" />
-                      <span>My Orders</span>
+                      My Orders
                     </Link>
                   </>
                 )}
@@ -394,10 +388,9 @@ export default function Navbar() {
                   <Link
                     href="/admin"
                     onClick={() => setIsMenuOpen(false)}
-                    className="p-2.5 rounded-xl bg-orange-100/70 hover:bg-orange-100 text-orange-950 font-black transition flex items-center gap-2 border border-orange-200 shadow-2xs"
+                    className="p-2.5 rounded-xl bg-orange-100/70 hover:bg-orange-100 text-orange-950 font-black transition border border-orange-200 shadow-2xs"
                   >
-                    <FaTachometerAlt className="text-primary w-4 h-4" />
-                    <span>Admin Dashboard</span>
+                    Admin Dashboard
                   </Link>
                 )}
               </nav>

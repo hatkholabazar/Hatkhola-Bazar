@@ -15,6 +15,7 @@ import {
 } from "react-icons/fa";
 import AdminHeader from "@/components/admin/AdminHeader";
 import { adminApi, ICostingItem, IPreOrderMetrics } from "@/lib/admin-api";
+import { loyaltyApi, ILoyaltyOverviewMetrics } from "@/lib/loyalty-api";
 import { formatTaka, formatAdminDate } from "@/config/admin-labels";
 
 interface DirectExpense {
@@ -30,6 +31,7 @@ interface DirectExpense {
 export default function AdminCostingPage() {
   const [costingItems, setCostingItems] = useState<ICostingItem[]>([]);
   const [preOrderMetrics, setPreOrderMetrics] = useState<IPreOrderMetrics | null>(null);
+  const [loyaltyMetrics, setLoyaltyMetrics] = useState<ILoyaltyOverviewMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -81,12 +83,14 @@ export default function AdminCostingPage() {
   const loadCosting = async () => {
     try {
       setLoading(true);
-      const [costingData, metricsData] = await Promise.all([
+      const [costingData, metricsData, loyaltyData] = await Promise.all([
         adminApi.getCosting(),
         adminApi.getPreOrderMetrics().catch(() => null),
+        loyaltyApi.getAdminOverview().catch(() => null),
       ]);
       setCostingItems(costingData.costingSummary || []);
       setPreOrderMetrics(metricsData);
+      setLoyaltyMetrics(loyaltyData);
     } catch (err) {
       console.error("Error loading costing data:", err);
     } finally {
@@ -206,10 +210,10 @@ export default function AdminCostingPage() {
         }
       />
 
-      <div className="p-6 space-y-8 max-w-7xl mx-auto">
+      <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-8 max-w-7xl mx-auto">
         {/* Pre-Order Demand & Customer Liabilities Summary */}
         {preOrderMetrics && (
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4">
             <div>
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                 Customer Deposits Held (Liability)
@@ -243,6 +247,47 @@ export default function AdminCostingPage() {
               </div>
               <span className="text-[10px] text-slate-400">
                 Recognized as Other Income in financial reports
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Voucher Discounts & Outstanding Loyalty Liabilities */}
+        {loyaltyMetrics && (
+          <div className="bg-linear-to-r from-orange-50/70 via-white to-amber-50/60 p-5 rounded-2xl border border-orange-200/90 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Voucher Discounts Given (Revenue Reduction)
+              </span>
+              <div className="text-xl font-extrabold text-slate-900 mt-1">
+                {formatTaka(loyaltyMetrics.totalDiscountGivenTaka)}
+              </div>
+              <span className="text-[10px] text-slate-400">
+                {loyaltyMetrics.totalVouchersRedeemed} total vouchers redeemed
+              </span>
+            </div>
+
+            <div>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Outstanding Voucher Liability
+              </span>
+              <div className="text-xl font-extrabold text-amber-700 mt-1">
+                {formatTaka(loyaltyMetrics.outstandingVoucherLiabilityTaka)}
+              </div>
+              <span className="text-[10px] text-slate-400">
+                {loyaltyMetrics.activeLoyaltyVouchers} active vouchers unredeemed
+              </span>
+            </div>
+
+            <div>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Expired Unused Vouchers
+              </span>
+              <div className="text-xl font-extrabold text-slate-600 mt-1">
+                {loyaltyMetrics.expiredUnusedCount}
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Expired without cost to Hatkhola Bazar
               </span>
             </div>
           </div>

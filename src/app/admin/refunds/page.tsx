@@ -109,7 +109,7 @@ export default function AdminRefundsPage() {
         subtitle="Review unboxing photos, resolve guarantee claims, and issue reversals"
       />
 
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
         {/* Search & Filter Toolbar */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-80">

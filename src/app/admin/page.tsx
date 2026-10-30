@@ -66,85 +66,85 @@ export default function AdminDashboardPage() {
         }
       />
 
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
         {/* Metric Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
           {/* Card 1: Today's Revenue */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
+          <div className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider">
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider truncate">
                 Today&apos;s Revenue
               </span>
-              <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center">
-                <FaMoneyBillWave className="text-sm" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+                <FaMoneyBillWave className="text-xs sm:text-sm" />
               </div>
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              <p className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
                 {formatTaka(report?.today?.revenue ?? 0)}
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                {report?.today?.orderCount ?? 0} direct & courier sales
+              <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1 truncate">
+                {report?.today?.orderCount ?? 0} sales
               </p>
             </div>
           </div>
 
           {/* Card 2: Today's Gross Profit */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
+          <div className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider">
-                Today&apos;s Gross Profit
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider truncate">
+                Gross Profit
               </span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                <FaChartLine className="text-sm" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                <FaChartLine className="text-xs sm:text-sm" />
               </div>
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-emerald-600 tracking-tight">
+              <p className="text-lg sm:text-2xl font-black text-emerald-600 tracking-tight">
                 {formatTaka(report?.today?.profit ?? 0)}
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                COGS: {formatTaka(report?.today?.cogs ?? 0)} (FIFO accurate)
+              <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1 truncate">
+                COGS: {formatTaka(report?.today?.cogs ?? 0)}
               </p>
             </div>
           </div>
 
           {/* Card 3: Stock on Hand Weight */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
+          <div className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider">
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider truncate">
                 Stock on Hand
               </span>
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                <FaBoxes className="text-sm" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <FaBoxes className="text-xs sm:text-sm" />
               </div>
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              <p className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
                 {report?.totalStockWeightKg?.toFixed(1) ?? "0.0"} kg
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Across {report?.activeBatchCount ?? 0} active village batches
+              <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1 truncate">
+                {report?.activeBatchCount ?? 0} batches
               </p>
             </div>
           </div>
 
           {/* Card 4: Inventory Book Value */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
+          <div className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider">
-                Inventory Book Value
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider truncate">
+                Inventory Value
               </span>
-              <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                <FaMoneyBillWave className="text-sm" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                <FaMoneyBillWave className="text-xs sm:text-sm" />
               </div>
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              <p className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
                 {formatTaka(report?.totalStockValue ?? 0)}
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Cost remaining (landed + freight)
+              <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1 truncate">
+                Landed cost
               </p>
             </div>
           </div>
@@ -171,7 +171,7 @@ export default function AdminDashboardPage() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 pt-1">
               <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200/70">
                 <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block">
                   Open Pre-Orders

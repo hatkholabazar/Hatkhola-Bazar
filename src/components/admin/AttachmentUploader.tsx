@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import imageCompression from "browser-image-compression";
+import { uploadToCloudinary } from "@/lib/cloudinary-client";
 import {
   FaCloudUploadAlt,
   FaFileImage,
@@ -51,63 +51,21 @@ export default function AttachmentUploader({
     setIsUploading(true);
 
     try {
-      // 1. Browser compression: max 1600px width/height, max 1MB
-      let fileToUpload: File = file;
-      if (file.type.startsWith("image/")) {
-        try {
-          const options = {
-            maxSizeMB: 1.2,
-            maxWidthOrHeight: 1600,
-            useWebWorker: true,
-          };
-          fileToUpload = await imageCompression(file, options);
-        } catch {
-          // If compression fails, continue with original file
-          fileToUpload = file;
-        }
-      }
-
-      // 2. Obtain timestamped signature from Backend
-      const signData = await adminApi.getUploadSignature(selectedKind);
-
-      // 3. Upload directly to Cloudinary
-      const formData = new FormData();
-      formData.append("file", fileToUpload);
-      formData.append("api_key", signData.apiKey);
-      formData.append("timestamp", String(signData.timestamp));
-      formData.append("signature", signData.signature);
-      formData.append("folder", signData.folder);
-      formData.append("type", signData.type);
-
-      const cloudRes = await fetch(
-        `https://api.cloudinary.com/v1_1/${signData.cloudName}/auto/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-
-      if (!cloudRes.ok) {
-        const errorJson = await cloudRes.json();
-        throw new Error(errorJson.error?.message || "Cloudinary upload failed");
-      }
-
-      const cloudData = await cloudRes.json();
+      const uploadResult = await uploadToCloudinary(file, selectedKind as any, true);
 
       const newAttachment: IAttachmentMeta = {
-        publicId: cloudData.public_id,
-        resourceType: cloudData.resource_type || "image",
-        format: cloudData.format || "jpg",
-        bytes: cloudData.bytes || fileToUpload.size,
+        publicId: uploadResult.publicId,
+        resourceType: "image",
+        format: uploadResult.format,
+        bytes: uploadResult.bytes,
         kind: selectedKind,
         caption: caption.trim() || undefined,
         uploadedAt: new Date().toISOString(),
-        url: cloudData.secure_url,
+        url: uploadResult.secureUrl,
       };
 
       onChange([...attachments, newAttachment]);
       setCaption("");
-      // Reset input value
       e.target.value = "";
     } catch (err: any) {
       setUploadError(err.message || "Failed to upload image. Please try again.");

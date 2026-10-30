@@ -125,57 +125,71 @@ Please let me know the confirmation and delivery schedule. Thank you!`;
               />
 
               {/* Badge */}
-              <div className="absolute top-4 left-4">
+              <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10">
                 {liveMode === "pre_order" ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black bg-amber-500 text-white shadow-md">
-                    <FaClock className="w-3.5 h-3.5" />
-                    Pre-Order Open
+                  <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold bg-amber-500 text-white shadow-md">
+                    <FaClock className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                    <span>Pre-Order Open</span>
                   </span>
                 ) : product.isWinterSpecial ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black bg-blue-600 text-white shadow-md">
-                    <FaSnowflake className="w-3.5 h-3.5" />
-                    Winter Special
+                  <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold bg-blue-600 text-white shadow-md">
+                    <FaSnowflake className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                    <span>Winter Special</span>
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black bg-primary text-white shadow-md">
-                    <FaFire className="w-3.5 h-3.5" />
-                    {product.badge || "Best Seller"}
+                  <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold bg-primary text-white shadow-md">
+                    <FaFire className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                    <span>{product.badge || "Best Seller"}</span>
                   </span>
                 )}
               </div>
 
               {/* Stock Status */}
-              <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-xs px-3 py-1.5 rounded-full text-xs font-extrabold shadow-md flex items-center gap-1.5">
+              <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 max-w-[calc(100%-1.5rem)] bg-white/95 backdrop-blur-xs px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold shadow-md flex items-center gap-1.5 z-10">
                 {liveMode === "pre_order" ? (
                   <>
-                    <FaClock className="w-3.5 h-3.5 text-amber-600" />
-                    <span className="text-amber-800">Pre-Order ({expectedNote})</span>
+                    <FaClock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600 shrink-0" />
+                    <span className="text-amber-900 truncate">
+                      Pre-Order {expectedNote ? `· ${expectedNote.replace(/^\((.+)\)$/, "$1")}` : ""}
+                    </span>
                   </>
                 ) : (
                   <>
-                    <FaCheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="text-emerald-700">In Stock & Fresh Batch</span>
+                    <FaCheckCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 shrink-0" />
+                    <span className="text-emerald-700 whitespace-nowrap">In Stock & Fresh Batch</span>
                   </>
                 )}
               </div>
             </div>
 
             {/* Trust Points Under Image */}
-            <div className="grid grid-cols-3 gap-2.5 text-center">
-              <div className="p-3 rounded-2xl bg-white border border-orange-100 shadow-2xs">
-                <FaLeaf className="w-4 h-4 text-emerald-600 mx-auto mb-1" />
-                <span className="block text-2xs font-extrabold text-slate-800">100% Pure</span>
-                <span className="text-3xs text-slate-500">Chemical Free</span>
+            <div className="grid grid-cols-3 gap-2 sm:gap-2.5 text-center">
+              <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-white border border-orange-100 shadow-2xs flex flex-col items-center justify-center">
+                <FaLeaf className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 mb-1 shrink-0" />
+                <span className="block text-[11px] sm:text-xs font-bold text-slate-800 leading-tight">
+                  100% Pure
+                </span>
+                <span className="text-[9px] sm:text-[10px] text-slate-500 leading-tight block mt-0.5">
+                  Chemical Free
+                </span>
               </div>
-              <div className="p-3 rounded-2xl bg-white border border-orange-100 shadow-2xs">
-                <FaTruck className="w-4 h-4 text-primary mx-auto mb-1" />
-                <span className="block text-2xs font-extrabold text-slate-800">Home Delivery</span>
-                <span className="text-3xs text-slate-500">Cash on Delivery</span>
+              <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-white border border-orange-100 shadow-2xs flex flex-col items-center justify-center">
+                <FaTruck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary mb-1 shrink-0" />
+                <span className="block text-[11px] sm:text-xs font-bold text-slate-800 leading-tight">
+                  Home Delivery
+                </span>
+                <span className="text-[9px] sm:text-[10px] text-slate-500 leading-tight block mt-0.5">
+                  Cash on Delivery
+                </span>
               </div>
-              <div className="p-3 rounded-2xl bg-white border border-orange-100 shadow-2xs">
-                <FaShieldAlt className="w-4 h-4 text-amber-600 mx-auto mb-1" />
-                <span className="block text-2xs font-extrabold text-slate-800">Quality Verified</span>
-                <span className="text-3xs text-slate-500">Free Returns</span>
+              <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-white border border-orange-100 shadow-2xs flex flex-col items-center justify-center">
+                <FaShieldAlt className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600 mb-1 shrink-0" />
+                <span className="block text-[11px] sm:text-xs font-bold text-slate-800 leading-tight">
+                  Quality Verified
+                </span>
+                <span className="text-[9px] sm:text-[10px] text-slate-500 leading-tight block mt-0.5">
+                  Free Returns
+                </span>
               </div>
             </div>
 
@@ -373,7 +387,7 @@ Please let me know the confirmation and delivery schedule. Thank you!`;
                     className="flex items-center justify-center gap-1.5 sm:gap-2 py-3.5 px-2 sm:px-3 rounded-2xl bg-orange-950 hover:bg-black text-white font-extrabold text-xs sm:text-sm whitespace-nowrap shadow-md transition-all cursor-pointer transform active:scale-98"
                   >
                     <FaBolt className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <span>Order Online</span>
+                    <span>{liveMode === "pre_order" ? "Pre-order Online" : "Order Online"}</span>
                   </button>
 
                   {/* Bottom-Left: Mobile Number */}

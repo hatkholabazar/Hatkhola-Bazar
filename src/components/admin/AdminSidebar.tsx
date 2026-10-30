@@ -12,6 +12,7 @@ import {
   FaUndoAlt,
   FaClipboardList,
   FaTruck,
+  FaGift,
   FaSignOutAlt,
   FaExternalLinkAlt,
   FaCheckCircle,
@@ -55,6 +56,11 @@ const NAV_ITEMS = [
     icon: FaTags,
   },
   {
+    href: "/admin/vouchers",
+    label: "Vouchers & Loyalty",
+    icon: FaGift,
+  },
+  {
     href: "/admin/refunds",
     label: "Refund Requests",
     icon: FaUndoAlt,
@@ -72,7 +78,10 @@ export default function AdminSidebar() {
   };
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 h-screen sticky top-0 select-none z-30">
+    <aside
+      id="hatkhola-admin-sidebar"
+      className="hidden md:flex w-64 bg-white border-r border-slate-200 flex-col shrink-0 h-screen sticky top-0 select-none z-30"
+    >
       {/* Brand & Console Header */}
       <div className="p-5 border-b border-slate-100 flex items-center justify-between">
         <Link href="/admin" className="flex items-center gap-3 group">
